@@ -9,6 +9,7 @@ import {
   Plus,
   SearchIcon,
   ShieldCheck,
+  Trash2,
   Trophy,
   Users,
 } from "lucide-react";
@@ -26,11 +27,20 @@ import { useAuth } from "@/api/auth";
 import { getNotifications, type NotificationItem } from "@/api/social";
 import { cacheAvatarUrl } from "@/api/client";
 import {
+  clearFinishedJobs,
+  clearJob,
   getJobs as getPdfImportJobs,
   subscribe as subscribePdfImportJobs,
   type PdfImportJob,
 } from "@/lib/pdf-import-jobs";
-import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { CreatePaperDialog } from "./create-paper-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -54,6 +64,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import Confetti from "react-confetti";
 import { useWindowSize } from "react-use";
 import { toast } from "sonner";
+
+const NOTIFICATIONS_SEEN_AT_KEY = "tppr:notifications-seen-at";
+
+function readNotificationsSeenAt(): number {
+  const raw = localStorage.getItem(NOTIFICATIONS_SEEN_AT_KEY);
+  return raw ? Number(raw) || 0 : 0;
+}
+
+function itemTimestamp(value?: string): number {
+  return value ? new Date(value).getTime() || 0 : 0;
+}
 
 export default function NavBar() {
   const online = useOnline();
@@ -85,6 +106,12 @@ export default function NavBar() {
     getPdfImportJobs()
   );
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsSeenAt, setNotificationsSeenAt] = useState(() =>
+    readNotificationsSeenAt()
+  );
+  const [selectedImportJobId, setSelectedImportJobId] = useState<string | null>(
+    null,
+  );
 
   const fetchNotifications = useCallback(async () => {
     if (!user) {
@@ -105,7 +132,11 @@ export default function NavBar() {
 
   // Re-fetch once when the dropdown is opened so the list is fresh.
   useEffect(() => {
-    if (notificationsOpen) fetchNotifications();
+    if (!notificationsOpen) return;
+    fetchNotifications();
+    const seenAt = Date.now();
+    localStorage.setItem(NOTIFICATIONS_SEEN_AT_KEY, String(seenAt));
+    setNotificationsSeenAt(seenAt);
   }, [notificationsOpen, fetchNotifications]);
 
   useEffect(() => {
@@ -113,10 +144,16 @@ export default function NavBar() {
   }, []);
 
   const visibleImportJobs = importJobs.slice().reverse().slice(0, 5);
-  const activeImportCount = importJobs.filter((job) =>
-    job.status === "pending" || job.status === "running"
+  const selectedImportJob = selectedImportJobId
+    ? importJobs.find((job) => job.id === selectedImportJobId) ?? null
+    : null;
+  const unreadSocialCount = notifications.filter((notification) =>
+    itemTimestamp(notification.createdAt) > notificationsSeenAt
   ).length;
-  const unreadCount = notifications.length + activeImportCount;
+  const unreadImportCount = importJobs.filter((job) =>
+    itemTimestamp(job.updatedAt) > notificationsSeenAt
+  ).length;
+  const unreadCount = unreadSocialCount + unreadImportCount;
 
   function dismissGuide() {
     localStorage.setItem("hasSeenSearchGuide", "true");
@@ -356,15 +393,32 @@ export default function NavBar() {
                         <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                           Import progress
                         </DropdownMenuLabel>
+                        {visibleImportJobs.some((job) =>
+                          job.status === "done" || job.status === "error"
+                        ) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              clearFinishedJobs();
+                              setImportJobs(getPdfImportJobs());
+                            }}
+                          >
+                            Clear finished
+                          </Button>
+                        )}
                         {visibleImportJobs.map((job) => (
                           <DropdownMenuItem
                             key={job.id}
                             className="gap-2 py-2"
-                            onClick={() => {
-                              if (job.status === "done" && job.paperId) {
-                                setNotificationsOpen(false);
-                                navigate(`/papers/${job.paperId}`);
-                              }
+                            onClick={(event) => {
+                              event.preventDefault();
+                              setSelectedImportJobId(job.id);
+                              setNotificationsOpen(false);
                             }}
                           >
                             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
@@ -396,6 +450,26 @@ export default function NavBar() {
                                 />
                               </span>
                             </span>
+                            {(job.status === "done" || job.status === "error") && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 shrink-0"
+                                aria-label={`Remove import for ${job.fileName}`}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  clearJob(job.id);
+                                  setImportJobs(getPdfImportJobs());
+                                  if (selectedImportJobId === job.id) {
+                                    setSelectedImportJobId(null);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            )}
                           </DropdownMenuItem>
                         ))}
                         <DropdownMenuSeparator />
@@ -443,6 +517,72 @@ export default function NavBar() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                <Dialog
+                  open={selectedImportJob !== null}
+                  onOpenChange={(open) => {
+                    if (!open) setSelectedImportJobId(null);
+                  }}
+                >
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Import progress</DialogTitle>
+                      <DialogDescription>
+                        {selectedImportJob?.paperTitle || selectedImportJob?.fileName ||
+                          "PDF conversion"}
+                      </DialogDescription>
+                    </DialogHeader>
+                    {selectedImportJob && (
+                      <div className="space-y-4">
+                        <div className="rounded-lg border bg-muted/40 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium">
+                                {selectedImportJob.message}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Status: {selectedImportJob.status}
+                              </p>
+                            </div>
+                            {(selectedImportJob.status === "done" ||
+                              selectedImportJob.status === "error") && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  clearJob(selectedImportJob.id);
+                                  setImportJobs(getPdfImportJobs());
+                                  setSelectedImportJobId(null);
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="max-h-80 overflow-auto rounded-lg border bg-black p-3 font-mono text-xs text-green-100">
+                          {(selectedImportJob.logs?.length ?? 0) > 0
+                            ? selectedImportJob.logs?.map((line, index) => (
+                              <div key={`${line}-${index}`}>{line}</div>
+                            ))
+                            : <div>No output yet.</div>}
+                        </div>
+                        {selectedImportJob.status === "done" && selectedImportJob.paperId && (
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setSelectedImportJobId(null);
+                              navigate(`/papers/${selectedImportJob.paperId}`);
+                            }}
+                          >
+                            Open paper
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </DialogContent>
+                </Dialog>
 
                 <Dialog open={newPaperOpen} onOpenChange={setNewPaperOpen}>
                   <DialogTrigger asChild>
