@@ -93,6 +93,7 @@ PUBLIC_API_ENDPOINTS = {
     "tppr-questions.get_paper",
     "tppr-progress.paper_focus_stats",
     "tppr-social.leaderboard",
+    "tppr-social.user_profile",
     "tppr-stars.paper_star_count",
 }
 

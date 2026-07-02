@@ -3,7 +3,7 @@ import re
 from uuid import uuid4
 from urllib.parse import urlparse
 
-from flask import Blueprint, jsonify, redirect, request, send_file
+from flask import Blueprint, jsonify, current_app, redirect, request, send_file
 from sqlmodel import col, select
 from datetime import datetime, UTC
 
@@ -573,7 +573,14 @@ def create_paper():
 
         session.commit()
         session.refresh(paper)
-        return jsonify(paper_db_to_read(paper).model_dump(mode="json")), 201
+        try:
+            return jsonify(paper_db_to_read(paper).model_dump(mode="json")), 201
+        except Exception as e:
+            current_app.logger.error(f"Failed to serialize created paper: {e}")
+            return jsonify({
+                "message": "Paper created but response serialization failed",
+                "paper_id": paper.id,
+            }), 201
 
 
 @q_bp.route("/api/papers/<string:paper_id>", methods=["PUT"])

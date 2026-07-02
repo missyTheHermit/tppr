@@ -47,6 +47,12 @@ CourseLevel = Literal[
 ]
 
 
+class LenientBaseModel(BaseModel):
+    """Base model that silently ignores unknown fields, used for models
+    that deserialise LLM-generated JSON which may contain extra keys."""
+    model_config = ConfigDict(extra="ignore")
+
+
 class StrictBaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -64,12 +70,12 @@ class SyllabusPoint(StrictBaseModel):
     )
 
 
-class TextBlock(StrictBaseModel):
+class TextBlock(LenientBaseModel):
     kind: Literal["text"]
     text: str
 
 
-class ImageBlock(StrictBaseModel):
+class ImageBlock(LenientBaseModel):
     kind: Literal["image"]
     url: str
     mime_type: str | None = None
@@ -78,7 +84,7 @@ class ImageBlock(StrictBaseModel):
     height: int | None = PydanticField(default=None, ge=1)
 
 
-class TableBlock(StrictBaseModel):
+class TableBlock(LenientBaseModel):
     kind: Literal["table"]
     html: str = PydanticField(min_length=1)
 
@@ -89,7 +95,7 @@ ContentBlock = Annotated[
 ]
 
 
-class ChoiceOption(StrictBaseModel):
+class ChoiceOption(LenientBaseModel):
     label: str = PydanticField(
         pattern=r"^[A-Z]$",
         description="Option letter, e.g. A, B, C, D.",
@@ -97,7 +103,7 @@ class ChoiceOption(StrictBaseModel):
     content: list[ContentBlock] = PydanticField(min_length=1)
 
 
-class QuestionAnswer(StrictBaseModel):
+class QuestionAnswer(LenientBaseModel):
     option_label: str | None = PydanticField(
         default=None,
         pattern=r"^[A-Z]$",
@@ -129,7 +135,7 @@ def _parse_answer(raw: str | None) -> str | QuestionAnswer | None:
     return raw
 
 
-class RubricCriterion(StrictBaseModel):
+class RubricCriterion(LenientBaseModel):
     label: str | None = PydanticField(
         default=None,
         description="Optional criterion label or band name.",
@@ -155,7 +161,7 @@ class RubricCriterion(StrictBaseModel):
     )
 
 
-class QuestionRubric(StrictBaseModel):
+class QuestionRubric(LenientBaseModel):
     criteria: list[RubricCriterion] = PydanticField(min_length=1)
     notes: list[ContentBlock] | None = PydanticField(
         default=None,
@@ -163,7 +169,7 @@ class QuestionRubric(StrictBaseModel):
     )
 
 
-class QuestionPart(StrictBaseModel):
+class QuestionPart(LenientBaseModel):
     label: str = PydanticField(
         pattern=r"^[A-Za-z0-9]+$",
         description="Part label segment, e.g. 'a', 'i', '1', 'A'. Compound labels "
