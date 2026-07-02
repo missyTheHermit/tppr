@@ -1,8 +1,6 @@
 import type { Paper } from "@/types/tppr-paper";
-import {
-    convertMistralOcrWithMistralChat,
-    ocrPdfWithMistral,
-} from "@/api/mistral-ocr";
+import { ocrPdfWithMistral } from "@/api/mistral-ocr";
+import { convertMistralOcrToTpprPaper } from "@/api/papers";
 import { importPaperFromData } from "@/lib/paper-import";
 import { getStoredMistralApiKey } from "@/lib/mistral-settings";
 
@@ -174,21 +172,14 @@ async function runPdfImportPipeline(
         status: "running",
         message: "Uploading PDF to Mistral OCR",
     });
-    appendJobLog(jobId, "Uploading PDF to Mistral OCR");
 
     try {
         const ocrDocument = await ocrPdfWithMistral(file, {
             apiKey,
             onStatus: (message) => appendJobLog(jobId, message),
         });
-        appendJobLog(jobId, "Converting OCR with Mistral chat");
-        const converted = await convertMistralOcrWithMistralChat(
-            ocrDocument,
-            {
-                apiKey,
-                onStatus: (message) => appendJobLog(jobId, message),
-            },
-        );
+        appendJobLog(jobId, "Converting OCR into TPPR paper");
+        const converted = await convertMistralOcrToTpprPaper(ocrDocument);
         appendJobLog(jobId, "Saving paper");
         const paper: Paper = await importPaperFromData(converted, userId);
 
