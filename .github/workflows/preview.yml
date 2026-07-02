@@ -23,9 +23,13 @@ jobs:
   deploy-preview:
     name: Deploy preview
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
+      - name: Check Cloudflare secrets
+        run: |
+          test -n "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          test -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+
       - name: Checkout
         uses: actions/checkout@v4
 
