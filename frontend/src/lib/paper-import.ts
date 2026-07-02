@@ -1,6 +1,106 @@
-import type { Paper } from "@/types/tppr-paper";
+import type {
+    ContentBlock,
+    Paper,
+    QuestionAnswer,
+    QuestionPart,
+    QuestionRubric,
+} from "@/types/tppr-paper";
 import { syncService } from "@/lib/cloud";
 import { paperStore } from "@/lib/paper";
+
+const ADMIN_FIELD_RE = /^\s*(?:[-*]\s*)?(?:\**\s*)?(?:name|surname|given\s+names?|class|teacher|examiner|supervisor|candidate(?:\s+(?:id|no\.?|number))?|student(?:\s+(?:id|no\.?|number))?|centre(?:\s+(?:id|no\.?|number))?|seat(?:\s+(?:id|no\.?|number))?|id(?:\s+(?:no\.?|number))?)(?:\s*\**)?\s*[:#._-]*\s*(?:[_\-\s.]*|[A-Za-z0-9][A-Za-z0-9\s._/-]{0,80})$/i;
+const ADMIN_BOX_RE = /^(?:\|?\s*)?(?:[_\- ]{3,}\s*\|\s*){1,}[_\- ]{0,}\|?$/;
+const OCR_RUBBISH_PHRASES = [
+    "do not write in this area",
+    "office use only",
+    "answer booklet",
+    "answers will be recorded",
+    "place your answer",
+];
+
+function isOcrRubbishLine(line: string): boolean {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    const low = trimmed.toLowerCase().replaceAll("**", "");
+    return ADMIN_FIELD_RE.test(trimmed)
+        || ADMIN_BOX_RE.test(trimmed)
+        || OCR_RUBBISH_PHRASES.some((phrase) => low.includes(phrase));
+}
+
+function cleanText(text: string): string {
+    return text
+        .split("\n")
+        .filter((line) => !isOcrRubbishLine(line))
+        .join("\n")
+        .trim();
+}
+
+function cleanBlocks(blocks?: ContentBlock[]): ContentBlock[] | undefined {
+    if (!blocks) return blocks;
+    const cleaned: ContentBlock[] = [];
+    for (const block of blocks) {
+        if (block.kind !== "text") {
+            cleaned.push(block);
+            continue;
+        }
+        const text = cleanText(block.text);
+        if (text) cleaned.push({ ...block, text });
+    }
+    return cleaned.length ? cleaned : undefined;
+}
+
+function cleanAnswer(answer: string | QuestionAnswer | null | undefined) {
+    if (typeof answer === "string") return cleanText(answer) || undefined;
+    if (!answer || typeof answer !== "object") return answer;
+    return {
+        ...answer,
+        content: cleanBlocks(answer.content),
+        alternatives: answer.alternatives?.map((blocks) => cleanBlocks(blocks) ?? []),
+    };
+}
+
+function cleanRubric(rubric?: QuestionRubric): QuestionRubric | undefined {
+    if (!rubric) return rubric;
+    return {
+        ...rubric,
+        criteria: rubric.criteria.map((criterion) => ({
+            ...criterion,
+            description: cleanBlocks(criterion.description) ?? [],
+        })),
+        notes: cleanBlocks(rubric.notes),
+    };
+}
+
+function cleanPart(part: QuestionPart): QuestionPart {
+    return {
+        ...part,
+        stimulus: cleanBlocks(part.stimulus),
+        content: cleanBlocks(part.content),
+        answer: cleanAnswer(part.answer),
+        rubric: cleanRubric(part.rubric),
+        guidelines: cleanBlocks(part.guidelines),
+        parts: part.parts?.map(cleanPart),
+    };
+}
+
+export function cleanImportedPaperContent(paper: Paper): Paper {
+    return {
+        ...paper,
+        questions: paper.questions.map((question) => ({
+            ...question,
+            stimulus: cleanBlocks(question.stimulus),
+            content: cleanBlocks(question.content),
+            options: question.options?.map((option) => ({
+                ...option,
+                content: cleanBlocks(option.content) ?? [],
+            })),
+            parts: question.parts?.map(cleanPart),
+            answer: cleanAnswer(question.answer),
+            rubric: cleanRubric(question.rubric),
+            guidelines: cleanBlocks(question.guidelines),
+        })),
+    };
+}
 
 function isValidTpprPaper(data: unknown): data is Paper {
     if (typeof data !== "object" || data === null) return false;
@@ -58,7 +158,7 @@ export async function importPaperFromData(
     }
 
     const now = new Date().toISOString();
-    const imported: Paper = {
+    const imported: Paper = cleanImportedPaperContent({
         ...data,
         id: crypto.randomUUID(),
         author_id: authorId,
@@ -71,7 +171,7 @@ export async function importPaperFromData(
             author_id: authorId,
             paper_id: "",
         })),
-    };
+    });
     imported.questions = imported.questions.map((question) => ({
         ...question,
         paper_id: imported.id,
