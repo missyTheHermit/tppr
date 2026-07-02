@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from auth.db import AuthenticationDB, UserDB
 from auth.supabase import get_current_user_id, supabase_auth_required
+from admin import is_admin
 from questions.db import get_session
 from sqlmodel import select
 
@@ -299,6 +300,7 @@ def user_profile(profile_ref):
                 "created_at": profile_user.created_at.isoformat()
                 if profile_user.created_at
                 else None,
+                "admin": is_admin(profile_user.user_id),
             },
             "stats": stats,
             "presence": _presence_response(presence, paper) if presence else None,
