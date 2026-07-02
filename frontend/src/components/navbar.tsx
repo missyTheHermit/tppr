@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Trash2,
   Trophy,
+  User,
   Users,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -671,6 +672,12 @@ export default function NavBar() {
                         <Link to="/dashboard">
                           <LayoutDashboard />
                           Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to={`/users/${user.username}`}>
+                          <User />
+                          View profile
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>

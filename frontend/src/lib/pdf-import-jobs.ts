@@ -183,6 +183,7 @@ async function runPdfImportPipeline(
         const converted = await convertMistralOcrWithMistralChat(ocrDocument, {
             apiKey,
             onStatus: (message) => appendJobLog(jobId, message),
+            onChunk: (text) => appendJobLog(jobId, text),
         });
         appendJobLog(jobId, "Saving paper");
         const paper: Paper = await importPaperFromData(converted, userId);
