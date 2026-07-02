@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Activity, Clock, FileText, Flame, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,18 +50,11 @@ function StatCard(
 export default function UserProfile() {
     const { userId } = useParams<{ userId: string }>();
     const { user, loading: authLoading } = useAuth();
-    const navigate = useNavigate();
     const [profile, setProfile] = useState<UserProfileData | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!authLoading && !user) {
-            navigate(`/login?redirect=/users/${userId}`, { replace: true });
-        }
-    }, [authLoading, navigate, user, userId]);
-
-    useEffect(() => {
-        if (!user || !userId) return;
+        if (authLoading || !userId) return;
 
         setLoading(true);
         getUserProfile(userId)
@@ -75,9 +68,9 @@ export default function UserProfile() {
                 setProfile(null);
             })
             .finally(() => setLoading(false));
-    }, [user, userId]);
+    }, [authLoading, userId]);
 
-    if (authLoading || !user) return null;
+    if (authLoading) return null;
 
     return (
         <>
@@ -133,6 +126,15 @@ export default function UserProfile() {
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2">
+                                            {user?.user_id === profile.user.user_id && (
+                                                <Button
+                                                    asChild
+                                                    variant="outline"
+                                                    size="sm"
+                                                >
+                                                    <Link to="/settings">Edit profile</Link>
+                                                </Button>
+                                            )}
                                             <Badge
                                                 variant={profile.presence?.online
                                                     ? "secondary"

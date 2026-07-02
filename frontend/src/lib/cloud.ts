@@ -186,6 +186,16 @@ export class SyncService {
         }
     }
 
+    discardPending(): void {
+        if (this.timeout) {
+            clearTimeout(this.timeout);
+            this.timeout = null;
+        }
+        this.pending = null;
+        this.pendingVersion += 1;
+        this.setStatus("synced");
+    }
+
     async publish(paperId: string): Promise<void> {
         const paper = await paperStore.getPaper(paperId);
         if (!paper) throw new Error("Paper not found locally");

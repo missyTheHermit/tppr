@@ -23,6 +23,8 @@ import { toast } from "sonner";
 import { Key, Copy, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/api/client";
+import { syncService } from "@/lib/cloud";
+import { paperStore } from "@/lib/paper";
 import {
   createApiKey,
   listApiKeys,
@@ -49,7 +51,7 @@ import {
  * databases we may have created. Keys are removed if they start with
  * `tppr`, start with `hasSeen`, or contain `tppr` anywhere in the name.
  */
-export function clearTpprLocalStorage() {
+async function clearTpprLocalStorage() {
     // localStorage keys
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -66,16 +68,26 @@ export function clearTpprLocalStorage() {
     for (const key of toRemove) localStorage.removeItem(key);
 
     // IndexedDB — best-effort wipe of any tppr-prefixed databases.
+    try {
+        await paperStore.clearAll();
+    } catch {
+        /* ignore, the database may not exist yet */
+    }
+
     if (typeof indexedDB !== "undefined" && indexedDB.databases) {
-        indexedDB.databases().then((dbs) => {
-            for (const db of dbs) {
-                if (db.name && db.name.includes("tppr")) {
-                    indexedDB.deleteDatabase(db.name);
-                }
-            }
-        }).catch(() => {
-            /* ignore — not all browsers support indexedDB.databases() */
-        });
+        const dbs = await indexedDB.databases().catch(() => []);
+        await Promise.all(
+            dbs
+                .filter((db) => db.name && db.name.includes("tppr"))
+                .map((db) =>
+                    new Promise<void>((resolve) => {
+                        const req = indexedDB.deleteDatabase(db.name!);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => resolve();
+                        req.onblocked = () => resolve();
+                    })
+                ),
+        );
     }
 }
 
@@ -195,12 +207,29 @@ export default function Settings() {
     }
 
     async function handleUpdateUsername() {
+        const trimmed = username.trim();
+        if (!trimmed) {
+            toast.error("Username is required");
+            return;
+        }
         const { error } = await supabase.auth.updateUser({
-            data: { username },
+            data: { username: trimmed },
         });
         if (error) {
             toast.error(error.message);
         } else {
+            const form = new FormData();
+            form.set("username", trimmed);
+            const res = await apiFetch("/api/account/username", {
+                method: "PUT",
+                body: form,
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                toast.error(body?.message ?? "Failed to update username");
+                return;
+            }
+            await refreshUser();
             toast.success("Username updated");
         }
     }
@@ -303,7 +332,8 @@ export default function Settings() {
                 toast.error(body?.message ?? "Failed to reset account data");
                 return;
             }
-            clearTpprLocalStorage();
+            syncService.discardPending();
+            await clearTpprLocalStorage();
             toast.success("Account data reset");
             setResetDataOpen(false);
             // Refresh the page so all in-memory state is wiped cleanly.

@@ -224,6 +224,11 @@ def swagger_json():
                         "type": "http",
                         "scheme": "bearer",
                         "bearerFormat": "Supabase JWT",
+                    },
+                    "apiKeyAuth": {
+                        "type": "apiKey",
+                        "in": "header",
+                        "name": "X-API-Key",
                     }
                 },
                 "schemas": {
@@ -961,7 +966,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Authentication"],
                         "summary": "Get the authenticated user",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Authenticated user details", ref("WhoAmI")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1013,7 +1018,7 @@ def swagger_json():
                     "put": {
                         "tags": ["Account"],
                         "summary": "Update username",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "requestBody": form_request_body(
                             {"username": {"type": "string"}},
                             ["username"],
@@ -1042,7 +1047,7 @@ def swagger_json():
                         "tags": ["Account"],
                         "summary": "Update password",
                         "description": "Password changes are handled by Supabase Auth, so this legacy local endpoint is disabled.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "410": message_response("Password changes are handled by Supabase Auth"),
                         },
@@ -1052,7 +1057,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Account"],
                         "summary": "Delete account",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": message_response("Account deleted"),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1066,7 +1071,7 @@ def swagger_json():
                         "tags": ["Account"],
                         "summary": "Reset account data",
                         "description": "Deletes the authenticated user's app data while preserving the Supabase Auth user and local users row.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": message_response("Account data reset"),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1079,7 +1084,7 @@ def swagger_json():
                     "put": {
                         "tags": ["Account"],
                         "summary": "Upload or replace avatar",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "requestBody": multipart_request_body(
                             {"file": {"type": "string", "format": "binary"}},
                             ["file"],
@@ -1094,7 +1099,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Account"],
                         "summary": "Remove avatar",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": message_response("Avatar removed"),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1107,7 +1112,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Account"],
                         "summary": "Enable two-factor authentication",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("2FA setup details generated", ref("TwoFactorSetup")),
                             "400": error_response("2FA is already enabled"),
@@ -1121,7 +1126,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Account"],
                         "summary": "Disable two-factor authentication",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "requestBody": form_request_body(
                             {"totp_code": {"type": "string"}},
                             ["totp_code"],
@@ -1140,7 +1145,7 @@ def swagger_json():
                         "tags": ["Assets"],
                         "summary": "Upload a paper image asset",
                         "description": "Uploads an image asset for an author-owned paper. Removed papers cannot receive new assets.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "requestBody": multipart_request_body(
                             {
@@ -1169,7 +1174,7 @@ def swagger_json():
                         "tags": ["Assets"],
                         "summary": "Get an uploaded asset",
                         "description": "Returns an asset only if the caller can view the parent paper. Public paper assets can be read without login; private paper assets require the author or an admin.",
-                        "security": [{"bearerAuth": []}, {}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}, {}],
                         "parameters": [asset_id_parameter()],
                         "responses": {
                             "200": binary_response("Asset bytes", "image/*"),
@@ -1192,7 +1197,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Papers"],
                         "summary": "List authenticated user's papers",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": pagination_parameters(),
                         "responses": {
                             "200": response("User paper results", ref("PaperList")),
@@ -1203,7 +1208,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Papers"],
                         "summary": "Create a paper",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "requestBody": json_request_body(ref("PaperWrite")),
                         "responses": {
                             "201": response("Paper created", ref("Paper")),
@@ -1218,7 +1223,7 @@ def swagger_json():
                         "tags": ["Papers"],
                         "summary": "Get a paper",
                         "description": "Public papers can be read without login. Private papers require the author's Supabase bearer token.",
-                        "security": [{"bearerAuth": []}, {}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}, {}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "200": response("Paper details", ref("Paper")),
@@ -1229,7 +1234,7 @@ def swagger_json():
                     "put": {
                         "tags": ["Papers"],
                         "summary": "Update a paper",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "requestBody": json_request_body(ref("PaperWrite")),
                         "responses": {
@@ -1244,7 +1249,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Papers"],
                         "summary": "Delete a paper",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "200": message_response("Paper deleted"),
@@ -1260,7 +1265,7 @@ def swagger_json():
                         "tags": ["Papers"],
                         "summary": "Publish a paper",
                         "description": "Marks an existing author-owned paper as public. If the paper does not exist, the JSON body is used to create it before publishing.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "requestBody": json_request_body(ref("PaperWrite"), required=False),
                         "responses": {
@@ -1275,7 +1280,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Papers"],
                         "summary": "Unpublish a paper",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "200": response("Paper unpublished", ref("PaperMeta")),
@@ -1292,7 +1297,7 @@ def swagger_json():
                         "tags": ["Papers"],
                         "summary": "Remix a public paper",
                         "description": "Copies a public paper and its questions into the authenticated user's private library.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "201": response("Private remix created", ref("Paper")),
@@ -1308,7 +1313,7 @@ def swagger_json():
                         "tags": ["Papers"],
                         "summary": "Remix a question into one of the user's papers",
                         "description": "Copies one question from a public source paper into an authenticated user's target paper.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter(), question_id_parameter()],
                         "requestBody": json_request_body(ref("QuestionRemixRequest")),
                         "responses": {
@@ -1326,7 +1331,7 @@ def swagger_json():
                         "tags": ["Admin"],
                         "summary": "Activate admin mode",
                         "description": "Activates admin mode for authenticated users with an admin row in public.user_roles.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Admin mode activated", ref("AdminStatus")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1338,7 +1343,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Admin"],
                         "summary": "Get admin status",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Current admin status", ref("AdminStatus")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1350,7 +1355,7 @@ def swagger_json():
                         "tags": ["Admin"],
                         "summary": "Update paper verification",
                         "description": "Sets or clears the public verification checkmark and optional source metadata for a paper.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "requestBody": json_request_body(ref("PaperVerificationUpdate")),
                         "responses": {
@@ -1366,7 +1371,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Admin"],
                         "summary": "List removed papers",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [
                             {"name": "q", "in": "query", "schema": {"type": "string"}},
                             {"name": "page", "in": "query", "schema": {"type": "integer", "minimum": 1, "default": 1}},
@@ -1383,7 +1388,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Admin"],
                         "summary": "Take down a paper and its remixes",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "200": response("Papers taken down", ref("AdminTakedownResult")),
@@ -1396,7 +1401,7 @@ def swagger_json():
                         "tags": ["Admin"],
                         "summary": "Restore a taken-down paper and its remixes",
                         "description": "Restores remembered previous visibility where available; otherwise restores papers to private.",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "200": response("Papers restored", ref("AdminTakedownResult")),
@@ -1411,7 +1416,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Stars"],
                         "summary": "List starred papers",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response(
                                 "Starred papers",
@@ -1429,14 +1434,14 @@ def swagger_json():
                     "get": {
                         "tags": ["Stars"],
                         "summary": "Get paper star status",
-                        "security": [{"bearerAuth": []}, {}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}, {}],
                         "parameters": [paper_id_parameter()],
                         "responses": {"200": response("Star status", ref("StarStatus"))},
                     },
                     "post": {
                         "tags": ["Stars"],
                         "summary": "Star a paper",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "200": response("Paper starred", ref("StarStatus")),
@@ -1447,7 +1452,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Stars"],
                         "summary": "Unstar a paper",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "responses": {
                             "200": response("Paper unstarred", ref("StarStatus")),
@@ -1459,7 +1464,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Reports"],
                         "summary": "Report a paper",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [paper_id_parameter()],
                         "requestBody": json_request_body(ref("PaperReportCreate")),
                         "responses": {
@@ -1474,7 +1479,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Reports"],
                         "summary": "List paper reports",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [
                             {
                                 "name": "status",
@@ -1501,7 +1506,7 @@ def swagger_json():
                     "patch": {
                         "tags": ["Reports"],
                         "summary": "Update report status",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [report_id_parameter()],
                         "requestBody": json_request_body(ref("PaperReportUpdate")),
                         "responses": {
@@ -1517,7 +1522,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Social"],
                         "summary": "Record presence heartbeat",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "requestBody": json_request_body(
                             {
                                 "type": "object",
@@ -1542,7 +1547,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Social"],
                         "summary": "Clear active paper presence",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Presence state", ref("Presence")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1553,7 +1558,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Social"],
                         "summary": "Send a friend request",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "requestBody": json_request_body(
                             {
                                 "type": "object",
@@ -1573,7 +1578,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Social"],
                         "summary": "List incoming friend requests",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Incoming friend requests", ref("FriendRequests")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1584,7 +1589,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Social"],
                         "summary": "List outgoing friend requests",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Outgoing friend requests", ref("FriendRequests")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1595,7 +1600,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Social"],
                         "summary": "Accept a friend request",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [friendship_id_parameter()],
                         "responses": {
                             "200": message_response("Friend request accepted"),
@@ -1608,7 +1613,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Social"],
                         "summary": "Decline a friend request",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [friendship_id_parameter()],
                         "responses": {
                             "200": message_response("Friend request declined"),
@@ -1621,7 +1626,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Social"],
                         "summary": "Cancel an outgoing friend request",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [friendship_id_parameter()],
                         "responses": {
                             "200": message_response("Friend request cancelled"),
@@ -1634,7 +1639,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Social"],
                         "summary": "List friends",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Friends", ref("Friends")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1645,7 +1650,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Social"],
                         "summary": "Remove a friend",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [user_id_path_parameter("other_id")],
                         "responses": {
                             "200": message_response("Friend removed"),
@@ -1654,16 +1659,14 @@ def swagger_json():
                         },
                     }
                 },
-                "/api/users/{profile_user_id}/profile": {
+                "/api/users/{profile_ref}/profile": {
                     "get": {
                         "tags": ["Social"],
-                        "summary": "Get a user profile",
-                        "security": [{"bearerAuth": []}],
-                        "parameters": [user_id_path_parameter("profile_user_id")],
+                        "summary": "Get a public user profile by user id or username",
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}, {}],
+                        "parameters": [user_id_path_parameter("profile_ref")],
                         "responses": {
                             "200": response("User profile", ref("UserProfile")),
-                            "401": error_response("Missing or invalid Supabase token"),
-                            "403": error_response("Profile is private to non-friends"),
                             "404": error_response("User not found"),
                         },
                     }
@@ -1672,7 +1675,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Social"],
                         "summary": "Get leaderboard",
-                        "security": [{"bearerAuth": []}, {}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}, {}],
                         "parameters": [
                             {
                                 "name": "scope",
@@ -1697,7 +1700,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Progress"],
                         "summary": "Start a paper attempt",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "requestBody": json_request_body(
                             {
                                 "type": "object",
@@ -1714,7 +1717,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Progress"],
                         "summary": "List paper attempts",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [
                             {"name": "paper_id", "in": "query", "schema": {"type": "string"}},
                             {"name": "completed", "in": "query", "schema": {"type": "boolean"}},
@@ -1731,7 +1734,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Progress"],
                         "summary": "Get a paper attempt",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [attempt_id_parameter()],
                         "responses": {
                             "200": response("Attempt details", ref("AttemptDetail")),
@@ -1743,7 +1746,7 @@ def swagger_json():
                     "patch": {
                         "tags": ["Progress"],
                         "summary": "Update attempt progress",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [attempt_id_parameter()],
                         "requestBody": json_request_body(
                             {
@@ -1767,7 +1770,7 @@ def swagger_json():
                     "delete": {
                         "tags": ["Progress"],
                         "summary": "Delete a paper attempt",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [attempt_id_parameter()],
                         "responses": {
                             "200": message_response("Attempt deleted"),
@@ -1781,7 +1784,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Progress"],
                         "summary": "Record question attempt timing",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [attempt_id_parameter()],
                         "requestBody": json_request_body(ref("QuestionAttempt")),
                         "responses": {
@@ -1797,7 +1800,7 @@ def swagger_json():
                     "post": {
                         "tags": ["Progress"],
                         "summary": "Complete a paper attempt",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "parameters": [attempt_id_parameter()],
                         "requestBody": json_request_body(
                             {
@@ -1824,7 +1827,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Progress"],
                         "summary": "Get current user's attempt stats",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Attempt stats", ref("StudentStats")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1835,7 +1838,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Stats"],
                         "summary": "Get current user's student stats",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response("Current user's stats", ref("MyStats")),
                             "401": error_response("Missing or invalid Supabase token"),
@@ -1847,7 +1850,7 @@ def swagger_json():
                     "get": {
                         "tags": ["Stats"],
                         "summary": "List all user stats",
-                        "security": [{"bearerAuth": []}],
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
                         "responses": {
                             "200": response(
                                 "All user stats",
