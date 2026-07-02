@@ -180,13 +180,25 @@ async function runPdfImportPipeline(
             apiKey,
             onStatus: (message) => appendJobLog(jobId, message),
         });
+
+        if (typeof ocrDocument === "object" && ocrDocument !== null) {
+            const pageCount = (ocrDocument as { pages?: unknown[] }).pages?.length ?? 0;
+            appendJobLog(jobId, `[dev] OCR returned ${pageCount} pages`);
+        }
+
         const converted = await convertMistralOcrWithMistralChat(ocrDocument, {
             apiKey,
             onStatus: (message) => appendJobLog(jobId, message),
             onChunk: (text) => appendJobLog(jobId, text),
         });
+
+        appendJobLog(jobId, `[dev] Converted paper: "${converted.title}", ${converted.questions?.length ?? 0} questions, ${converted.total_marks} marks`);
+
         appendJobLog(jobId, "Saving paper");
         const paper: Paper = await importPaperFromData(converted, userId);
+
+        appendJobLog(jobId, `[dev] Paper saved: id=${paper.id}, visibility=${paper.visibility}`);
+        appendJobLog(jobId, `[dev] Questions: ${paper.questions.map(q => `#${q.number}(${q.type},${q.marks}m)`).join(", ")}`);
 
         updateJob(jobId, {
             status: "done",

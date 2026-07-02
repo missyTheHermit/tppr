@@ -113,6 +113,7 @@ export default function NavBar() {
   const [selectedImportJobId, setSelectedImportJobId] = useState<string | null>(
     null,
   );
+  const [importDevMode, setImportDevMode] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
     if (!user) {
@@ -545,27 +546,56 @@ export default function NavBar() {
                                 Status: {selectedImportJob.status}
                               </p>
                             </div>
-                            {(selectedImportJob.status === "done" ||
-                              selectedImportJob.status === "error") && (
+                            <div className="flex items-center gap-2">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
-                                  clearJob(selectedImportJob.id);
-                                  setImportJobs(getPdfImportJobs());
-                                  setSelectedImportJobId(null);
-                                }}
+                                onClick={() => setImportDevMode((v) => !v)}
                               >
-                                Remove
+                                {importDevMode ? "Hide dev" : "Show dev"}
                               </Button>
-                            )}
+                              {(selectedImportJob.status === "done" ||
+                                selectedImportJob.status === "error") && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    clearJob(selectedImportJob.id);
+                                    setImportJobs(getPdfImportJobs());
+                                    setSelectedImportJobId(null);
+                                  }}
+                                >
+                                  Remove
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
+                        {importDevMode && (
+                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-xs">
+                            <p className="font-medium text-muted-foreground">Dev info</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                              <span className="text-muted-foreground">Job ID</span>
+                              <code className="break-all">{selectedImportJob.id}</code>
+                              <span className="text-muted-foreground">File</span>
+                              <span className="break-all">{selectedImportJob.fileName}</span>
+                              <span className="text-muted-foreground">Created</span>
+                              <span>{new Date(selectedImportJob.createdAt).toLocaleString()}</span>
+                              <span className="text-muted-foreground">Updated</span>
+                              <span>{new Date(selectedImportJob.updatedAt).toLocaleString()}</span>
+                              <span className="text-muted-foreground">Paper ID</span>
+                              <code className="break-all">{selectedImportJob.paperId ?? "—"}</code>
+                              <span className="text-muted-foreground">Log lines</span>
+                              <span>{selectedImportJob.logs?.length ?? 0}</span>
+                            </div>
+                          </div>
+                        )}
                         <div className="max-h-80 overflow-auto rounded-lg border bg-black p-3 font-mono text-xs text-green-100">
                           {(selectedImportJob.logs?.length ?? 0) > 0
                             ? selectedImportJob.logs?.map((line, index) => (
-                              <div key={`${line}-${index}`}>{line}</div>
+                              <div key={`${line}-${index}`} className={importDevMode ? "whitespace-pre-wrap break-all" : "whitespace-pre-wrap break-words"}>{line}</div>
                             ))
                             : <div>No output yet.</div>}
                         </div>
