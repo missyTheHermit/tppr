@@ -25,6 +25,11 @@ import {
 import { useAuth } from "@/api/auth";
 import { getNotifications, type NotificationItem } from "@/api/social";
 import { cacheAvatarUrl } from "@/api/client";
+import {
+  getJobs as getPdfImportJobs,
+  subscribe as subscribePdfImportJobs,
+  type PdfImportJob,
+} from "@/lib/pdf-import-jobs";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { CreatePaperDialog } from "./create-paper-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -76,6 +81,9 @@ export default function NavBar() {
   const { width, height } = useWindowSize();
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [importJobs, setImportJobs] = useState<PdfImportJob[]>(() =>
+    getPdfImportJobs()
+  );
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
@@ -100,7 +108,15 @@ export default function NavBar() {
     if (notificationsOpen) fetchNotifications();
   }, [notificationsOpen, fetchNotifications]);
 
-  const unreadCount = notifications.length;
+  useEffect(() => {
+    return subscribePdfImportJobs(() => setImportJobs(getPdfImportJobs()));
+  }, []);
+
+  const visibleImportJobs = importJobs.slice().reverse().slice(0, 5);
+  const activeImportCount = importJobs.filter((job) =>
+    job.status === "pending" || job.status === "running"
+  ).length;
+  const unreadCount = notifications.length + activeImportCount;
 
   function dismissGuide() {
     localStorage.setItem("hasSeenSearchGuide", "true");
@@ -335,7 +351,57 @@ export default function NavBar() {
                       )}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {notifications.length === 0
+                    {visibleImportJobs.length > 0 && (
+                      <>
+                        <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Import progress
+                        </DropdownMenuLabel>
+                        {visibleImportJobs.map((job) => (
+                          <DropdownMenuItem
+                            key={job.id}
+                            className="gap-2 py-2"
+                            onClick={() => {
+                              if (job.status === "done" && job.paperId) {
+                                setNotificationsOpen(false);
+                                navigate(`/papers/${job.paperId}`);
+                              }
+                            }}
+                          >
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                              <FileText className="size-4" />
+                            </span>
+                            <span className="flex min-w-0 flex-1 flex-col gap-1">
+                              <span className="truncate text-sm font-medium">
+                                {job.paperTitle || job.fileName}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {job.message}
+                              </span>
+                              <span className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                <span
+                                  className={`block h-full rounded-full ${
+                                    job.status === "error"
+                                      ? "bg-destructive"
+                                      : job.status === "done"
+                                      ? "bg-green-500"
+                                      : "bg-primary"
+                                  }`}
+                                  style={{
+                                    width: job.status === "pending"
+                                      ? "20%"
+                                      : job.status === "running"
+                                      ? "65%"
+                                      : "100%",
+                                  }}
+                                />
+                              </span>
+                            </span>
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
+                    {notifications.length === 0 && visibleImportJobs.length === 0
                       ? (
                         <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                           You're all caught up!
