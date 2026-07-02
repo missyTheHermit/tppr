@@ -18,9 +18,17 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { Key, Copy, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/api/client";
+import {
+  createApiKey,
+  listApiKeys,
+  revokeApiKey,
+  type ApiKey,
+} from "@/api/api-keys";
 import {
     getStoredMistralApiKey,
     setStoredMistralApiKey,
@@ -95,6 +103,14 @@ export default function Settings() {
     >(null);
     const [verifyCode, setVerifyCode] = useState("");
 
+    // API Keys
+    const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+    const [apiKeysLoading, setApiKeysLoading] = useState(true);
+    const [generateOpen, setGenerateOpen] = useState(false);
+    const [newKeyName, setNewKeyName] = useState("");
+    const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+    const [generating, setGenerating] = useState(false);
+
     useEffect(() => {
         supabase.auth.mfa.listFactors().then(({ data }) => {
             if (data?.totp) setMfaFactors(data.totp);
@@ -106,6 +122,15 @@ export default function Settings() {
             navigate("/login?redirect=/settings", { replace: true });
         }
     }, [user, authLoading, navigate]);
+
+    useEffect(() => {
+        if (!user) return;
+        setApiKeysLoading(true);
+        listApiKeys()
+            .then(({ keys }) => setApiKeys(keys))
+            .catch(() => toast.error("Failed to load API keys"))
+            .finally(() => setApiKeysLoading(false));
+    }, [user]);
 
     if (authLoading) return null;
     if (!user) return null;
@@ -302,6 +327,55 @@ export default function Settings() {
         navigate("/", { replace: true });
     }
 
+    async function handleGenerateKey() {
+        setGenerating(true);
+        try {
+            const result = await createApiKey(newKeyName.trim() || undefined);
+            setGeneratedKey(result.key);
+            toast.success("API key generated");
+            // Refresh the list
+            const { keys } = await listApiKeys();
+            setApiKeys(keys);
+        } catch (err: any) {
+            toast.error(err?.message ?? "Failed to generate API key");
+        } finally {
+            setGenerating(false);
+        }
+    }
+
+    async function handleRevokeKey(keyId: number) {
+        try {
+            await revokeApiKey(keyId);
+            toast.success("API key revoked");
+            setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
+        } catch (err: any) {
+            toast.error(err?.message ?? "Failed to revoke API key");
+        }
+    }
+
+    function handleCopyKey() {
+        if (!generatedKey) return;
+        navigator.clipboard.writeText(generatedKey).then(
+            () => toast.success("Key copied to clipboard"),
+            () => toast.error("Failed to copy"),
+        );
+    }
+
+    function closeGenerateDialog() {
+        setGenerateOpen(false);
+        setNewKeyName("");
+        setGeneratedKey(null);
+    }
+
+    function formatDate(dateStr: string | null) {
+        if (!dateStr) return "Never";
+        return new Date(dateStr).toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+        });
+    }
+
     return (
         <>
             <NavBar />
@@ -473,6 +547,191 @@ export default function Settings() {
                                 </Button>
                             </div>
                         </FieldGroup>
+                    </CardContent>
+                </Card>
+
+                {/* API Keys */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>API Keys</CardTitle>
+                        <CardDescription>
+                            Generate keys to authenticate with the tppr API.
+                            Keep them safe — you won't see the full key again.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            <Dialog
+                                open={generateOpen}
+                                onOpenChange={(open) => {
+                                    if (!open) closeGenerateDialog();
+                                    else setGenerateOpen(true);
+                                }}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button size="sm">
+                                        <Plus className="mr-1.5 size-4" />
+                                        Generate New Key
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            Generate API Key
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            Give your key a name to remember
+                                            what it's for.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    {!generatedKey ? (
+                                        <div className="space-y-4">
+                                            <Field>
+                                                <FieldLabel>
+                                                    Key name (optional)
+                                                </FieldLabel>
+                                                <Input
+                                                    value={newKeyName}
+                                                    onChange={(e) =>
+                                                        setNewKeyName(
+                                                            e.target.value,
+                                                        )}
+                                                    placeholder="e.g. My CLI tool"
+                                                />
+                                            </Field>
+                                            <DialogFooter>
+                                                <DialogClose asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        disabled={generating}
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                </DialogClose>
+                                                <Button
+                                                    onClick={handleGenerateKey}
+                                                    disabled={generating}
+                                                >
+                                                    {generating
+                                                        ? "Generating..."
+                                                        : "Generate"}
+                                                </Button>
+                                            </DialogFooter>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                                                <AlertTriangle className="size-4" />
+                                                <p className="text-sm font-medium">
+                                                    This is the only time you
+                                                    will see this key. Copy it
+                                                    now.
+                                                </p>
+                                            </div>
+                                            <Field>
+                                                <FieldLabel>
+                                                    Your API Key
+                                                </FieldLabel>
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        value={generatedKey}
+                                                        readOnly
+                                                        className="font-mono text-xs"
+                                                    />
+                                                    <Button
+                                                        size="icon"
+                                                        variant="outline"
+                                                        onClick={handleCopyKey}
+                                                        title="Copy to clipboard"
+                                                    >
+                                                        <Copy className="size-4" />
+                                                    </Button>
+                                                </div>
+                                            </Field>
+                                            <DialogFooter>
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={
+                                                        closeGenerateDialog
+                                                    }
+                                                >
+                                                    Done
+                                                </Button>
+                                            </DialogFooter>
+                                        </div>
+                                    )}
+                                </DialogContent>
+                            </Dialog>
+
+                            {apiKeysLoading ? (
+                                <p className="text-sm text-muted-foreground">
+                                    Loading...
+                                </p>
+                            ) : apiKeys.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No API keys yet. Generate one to get
+                                    started.
+                                </p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {apiKeys.map((key) => (
+                                        <div
+                                            key={key.id}
+                                            className="flex items-center justify-between rounded-md border p-3"
+                                        >
+                                            <div className="space-y-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <Key className="size-4 text-muted-foreground shrink-0" />
+                                                    <span className="text-sm font-medium truncate">
+                                                        {key.name ||
+                                                            "Untitled"}
+                                                    </span>
+                                                    <Badge
+                                                        variant="secondary"
+                                                        className="font-mono text-xs shrink-0"
+                                                    >
+                                                        {key.prefix}
+                                                    </Badge>
+                                                </div>
+                                                <div className="text-xs text-muted-foreground flex gap-3">
+                                                    <span>
+                                                        Created{" "}
+                                                        {formatDate(
+                                                            key.created_at,
+                                                        )}
+                                                    </span>
+                                                    <span>
+                                                        Last used{" "}
+                                                        {formatDate(
+                                                            key.last_used_at,
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="text-destructive hover:text-destructive shrink-0"
+                                                onClick={() => {
+                                                    if (
+                                                        confirm(
+                                                            "Revoke this API key? Any services using it will stop working.",
+                                                        )
+                                                    ) {
+                                                        handleRevokeKey(
+                                                            key.id,
+                                                        );
+                                                    }
+                                                }}
+                                                title="Revoke key"
+                                            >
+                                                <Trash2 className="size-4" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
 
