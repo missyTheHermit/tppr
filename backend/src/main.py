@@ -30,6 +30,26 @@ assets_dir = settings.ASSETS_DIR
 frontend_dist_dir = settings.FRONTEND_DIST_DIR
 api_only = settings.API_ONLY_FLAG in sys.argv
 INLINE_SCRIPT_RE = re.compile(r"<script(?:\s[^>]*)?>(.*?)</script>", re.DOTALL)
+SENSITIVE_PATH_SEGMENTS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".well-known",  # served nowhere in tppr; keep scanners away from SPA fallback
+    "actuator",
+}
+SENSITIVE_FILENAMES = {
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".env.development",
+    "appsettings.json",
+    "config.json",
+    "credentials.json",
+    "firebase.json",
+    "key.json",
+    "secrets.json",
+    "service-account.json",
+}
 
 app = Flask(__name__)
 
@@ -171,6 +191,15 @@ def frontend_dist_available():
     return os.path.isfile(os.path.join(frontend_dist_dir, "index.html"))
 
 
+def is_sensitive_probe_path(path: str) -> bool:
+    parts = [part for part in path.split("/") if part]
+    if not parts:
+        return False
+    if any(part in SENSITIVE_PATH_SEGMENTS for part in parts):
+        return True
+    return parts[-1] in SENSITIVE_FILENAMES
+
+
 @app.route("/api")
 @app.route("/api/")
 def api_landing():
@@ -197,6 +226,9 @@ def index(path):
         return serve_api_landing()
 
     if path:
+        if is_sensitive_probe_path(path):
+            return jsonify({"message": "404, resource not found"}), 404
+
         requested_file = os.path.join(frontend_dist_dir, path)
         if os.path.isfile(requested_file):
             response = send_from_directory(frontend_dist_dir, path)
