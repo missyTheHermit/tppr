@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, func
 from sqlmodel import Field, SQLModel, col, select
 
 from auth.supabase import get_current_user_id, supabase_auth_required
@@ -116,3 +116,15 @@ def unstar_paper(paper_id):
             session.commit()
 
     return jsonify({"starred": False}), 200
+
+
+@stars_bp.route("/api/papers/<string:paper_id>/star-count", methods=["GET"])
+def paper_star_count(paper_id):
+    """Public endpoint: total number of stars for a paper."""
+    with get_session() as session:
+        count = session.exec(
+            select(func.count(PaperStarDB.id)).where(
+                PaperStarDB.paper_id == paper_id
+            )
+        ).one()
+        return jsonify({"star_count": int(count)}), 200

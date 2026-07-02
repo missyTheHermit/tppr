@@ -36,6 +36,41 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 
+/**
+ * Remove all tppr-related keys from localStorage and clear any IndexedDB
+ * databases we may have created. Keys are removed if they start with
+ * `tppr`, start with `hasSeen`, or contain `tppr` anywhere in the name.
+ */
+export function clearTpprLocalStorage() {
+    // localStorage keys
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (
+            key.startsWith("tppr") ||
+            key.startsWith("hasSeen") ||
+            key.includes("tppr")
+        ) {
+            toRemove.push(key);
+        }
+    }
+    for (const key of toRemove) localStorage.removeItem(key);
+
+    // IndexedDB — best-effort wipe of any tppr-prefixed databases.
+    if (typeof indexedDB !== "undefined" && indexedDB.databases) {
+        indexedDB.databases().then((dbs) => {
+            for (const db of dbs) {
+                if (db.name && db.name.includes("tppr")) {
+                    indexedDB.deleteDatabase(db.name);
+                }
+            }
+        }).catch(() => {
+            /* ignore — not all browsers support indexedDB.databases() */
+        });
+    }
+}
+
 export default function Settings() {
     const { user, loading: authLoading, logout, refreshUser } = useAuth();
     const navigate = useNavigate();
@@ -243,8 +278,11 @@ export default function Settings() {
                 toast.error(body?.message ?? "Failed to reset account data");
                 return;
             }
+            clearTpprLocalStorage();
             toast.success("Account data reset");
             setResetDataOpen(false);
+            // Refresh the page so all in-memory state is wiped cleanly.
+            window.location.href = "/login";
         } catch {
             toast.error("Failed to reset account data");
         } finally {

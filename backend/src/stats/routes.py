@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify
+from sqlalchemy import func
 from sqlmodel import col, select
 
 from auth.db import AuthenticationDB, UserDB
@@ -7,6 +8,8 @@ from progress.aggregations import compute_many_students, ZERO_STUDENT_STATS
 from progress.models import PaperAttemptDB
 from progress.routes import _attempt_dict, _paper_meta_map
 from questions.db import get_session
+from questions.types import PaperDB
+from stars import PaperStarDB
 
 stats_bp = Blueprint("tppr-stats", __name__)
 auth_db = AuthenticationDB()
@@ -89,3 +92,71 @@ def all_user_stats():
         )
     )
     return jsonify({"users": rows}), 200
+
+
+@stats_bp.route("/api/papers/<string:paper_id>/author-stats", methods=["GET"])
+@supabase_auth_required()
+def paper_author_stats(paper_id):
+    """Aggregate stats for a paper, visible only to its author."""
+    user_id = get_current_user_id()
+
+    with get_session() as session:
+        paper = session.get(PaperDB, paper_id)
+        if not paper:
+            return jsonify({"message": "Paper not found"}), 404
+        if paper.author_id != str(user_id):
+            return jsonify({"message": "Forbidden"}), 403
+
+        attempts = session.exec(
+            select(PaperAttemptDB).where(PaperAttemptDB.paper_id == paper_id)
+        ).all()
+
+        total_attempts = len(attempts)
+
+        unique_attempters = session.exec(
+            select(func.count(func.distinct(PaperAttemptDB.user_id))).where(
+                PaperAttemptDB.paper_id == paper_id
+            )
+        ).one()
+
+        def _is_completed(attempt: PaperAttemptDB) -> bool:
+            return bool(attempt.completed) or attempt.max_slide >= paper.question_count + 1
+
+        completed = [a for a in attempts if _is_completed(a)]
+        completion_rate = (len(completed) / total_attempts) if total_attempts else 0.0
+
+        completed_seconds = [
+            int(a.elapsed_seconds) for a in completed if int(a.elapsed_seconds) > 0
+        ]
+        average_completion_seconds = (
+            sum(completed_seconds) / len(completed_seconds)
+            if completed_seconds
+            else None
+        )
+
+        reveal_counts = [int(a.reveal_count) for a in attempts]
+        average_reveal_count = (
+            sum(reveal_counts) / len(reveal_counts) if reveal_counts else None
+        )
+
+        star_count = session.exec(
+            select(func.count(PaperStarDB.id)).where(PaperStarDB.paper_id == paper_id)
+        ).one()
+
+        return (
+            jsonify(
+                {
+                    "total_attempts": total_attempts,
+                    "unique_attempters": int(unique_attempters),
+                    "completion_rate": round(completion_rate, 4),
+                    "average_completion_seconds": round(average_completion_seconds, 2)
+                    if average_completion_seconds is not None
+                    else None,
+                    "average_reveal_count": round(average_reveal_count, 2)
+                    if average_reveal_count is not None
+                    else None,
+                    "star_count": int(star_count),
+                }
+            ),
+            200,
+        )

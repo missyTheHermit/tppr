@@ -135,6 +135,15 @@ def authenticate_supabase_request(
             g.local_user = local_user
         return None
 
+    # API key auth: if an X-API-Key header is present, try it before JWT.
+    if request.headers.get("X-API-Key"):
+        from .api_keys import authenticate_api_key
+
+        _user_id, ok = authenticate_api_key()
+        if ok:
+            return None
+        # API key auth failed; fall through to JWT auth below.
+
     token = _bearer_token()
 
     g.user_id = None

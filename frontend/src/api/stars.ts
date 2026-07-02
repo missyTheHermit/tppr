@@ -46,3 +46,10 @@ export function setPaperStarred(
         return Boolean(data.starred);
     });
 }
+
+export async function getStarCount(paperId: string): Promise<number> {
+    const res = await apiFetch(`/api/papers/${paperId}/star-count`);
+    if (!res.ok) return 0;
+    const data = await res.json().catch(() => null);
+    return Number(data?.star_count ?? 0);
+}
