@@ -1,3 +1,1 @@
-/api/*  https://tppr.online/api/:splat  200
-/ping   https://tppr.online/ping        200
-/*      /index.html                    200
+/*      /index.html  200
