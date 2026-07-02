@@ -310,33 +310,6 @@ def get_asset(asset_id):
 
 # --- Papers ---
 
-@q_bp.route("/api/papers/import/mistral-ocr", methods=["POST"])
-@supabase_auth_required()
-def convert_mistral_ocr():
-    data = request.get_json(silent=True) or {}
-    document = data.get("document")
-    if not isinstance(document, dict):
-        return jsonify({"message": "Mistral OCR document is required"}), 400
-
-    try:
-        from tppr_paper_extractor import extract_paper, validate_paper
-    except ImportError:
-        return jsonify({"message": "tppr-paper-extractor is not installed"}), 500
-
-    try:
-        paper = extract_paper(document)
-        errors = validate_paper(paper)
-    except Exception as exc:
-        return jsonify({"message": "Failed to convert Mistral OCR output", "cause": str(exc)}), 422
-
-    if errors:
-        return jsonify({
-            "message": "Converted paper did not match the TPPR paper format",
-            "errors": errors,
-        }), 422
-
-    return jsonify(paper), 200
-
 @q_bp.route("/api/papers/search", methods=["GET"])
 def search_papers():
     q = request.args.get("q")

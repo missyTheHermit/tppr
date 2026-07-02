@@ -65,18 +65,6 @@ _ROMAN_RE = re.compile(r"^(i{1,3}|iv|v|vi{0,3}|ix|x|xi{0,3}|xii)$", re.IGNORECAS
 _TRAILING_MARKS_RE = re.compile(
     r"\s*(?:\((\d+)\s*marks?\)|(\d+)\s*marks?|\.\s+(\d+)|\s+(\d+))\s*$"
 )
-_ADMIN_FIELD_RE = re.compile(
-    r"^\s*(?:[-*]\s*)?(?:\**\s*)?"
-    r"(?:name|surname|given\s+names?|class|teacher|examiner|supervisor|"
-    r"candidate(?:\s+(?:id|no\.?|number))?|"
-    r"student(?:\s+(?:id|no\.?|number))?|"
-    r"centre(?:\s+(?:id|no\.?|number))?|"
-    r"seat(?:\s+(?:id|no\.?|number))?|id(?:\s+(?:no\.?|number))?)"
-    r"(?:\s*\**)?\s*[:#._-]*\s*"
-    r"(?:[_\-\s.]*|[A-Za-z0-9][A-Za-z0-9\s._/-]{0,80})$",
-    re.IGNORECASE,
-)
-_ADMIN_BOX_RE = re.compile(r"^(?:\|?\s*)?(?:[_\- ]{3,}\s*\|\s*){1,}[_\- ]{0,}\|?$")
 
 _BOILERPLATE_PHRASES = (
     "reading time", "working time", "write using", "calculators approved",
@@ -91,7 +79,6 @@ _BOILERPLATE_PHRASES = (
     "answer each question in the appropriate", "extra sheets of writing",
     "draw diagrams using pencil", "write using black pen",
     "for questions in section ii", "in questions 11", "in questions 1-16",
-    "answers will be recorded", "place your answer", "answer booklet",
 )
 _COURSE_LEVEL_MAP = {
     "mathematics extension 1": "extension_1",
@@ -154,10 +141,6 @@ def _is_boilerplate(line: str) -> bool:
     low = s.lower().lstrip("#-*").strip()
     low = low.replace("**", "")
     if any(phrase in low for phrase in _BOILERPLATE_PHRASES):
-        return True
-    if _ADMIN_FIELD_RE.match(s):
-        return True
-    if _ADMIN_BOX_RE.match(s):
         return True
     if _PAGE_MARKER_RE.match(s):
         return True
