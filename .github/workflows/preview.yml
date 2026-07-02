@@ -27,8 +27,10 @@ jobs:
     steps:
       - name: Check Cloudflare secrets
         run: |
-          test -n "${{ secrets.CLOUDFLARE_API_TOKEN }}"
-          test -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "::error::Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID in this repository's Actions secrets."
+            exit 1
+          fi
 
       - name: Checkout
         uses: actions/checkout@v4
