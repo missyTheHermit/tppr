@@ -5,6 +5,11 @@ import NavBar from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
+import {
     Avatar,
     AvatarFallback,
     AvatarImage,
@@ -828,13 +833,21 @@ export default function Settings() {
                                         <FieldLabel>
                                             Enter the 6-digit code from your app
                                         </FieldLabel>
-                                        <Input
-                                            value={verifyCode}
-                                            onChange={(e) =>
-                                                setVerifyCode(e.target.value)}
-                                            placeholder="000000"
+                                        <InputOTP
                                             maxLength={6}
-                                        />
+                                            value={verifyCode}
+                                            onChange={(value) => setVerifyCode(value)}
+                                            onComplete={handleVerifyEnrollment}
+                                        >
+                                            <InputOTPGroup>
+                                                <InputOTPSlot index={0} />
+                                                <InputOTPSlot index={1} />
+                                                <InputOTPSlot index={2} />
+                                                <InputOTPSlot index={3} />
+                                                <InputOTPSlot index={4} />
+                                                <InputOTPSlot index={5} />
+                                            </InputOTPGroup>
+                                        </InputOTP>
                                     </Field>
                                     <div className="flex gap-2">
                                         <Button

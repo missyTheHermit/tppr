@@ -13,6 +13,11 @@ import {
   FieldLabel,
   FieldSeparator,
 } from "@/components/ui/field";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useState } from "react";
@@ -111,14 +116,23 @@ export function LoginForm(
                     <FieldLabel htmlFor="mfa-code">
                       Enter your 2FA code
                     </FieldLabel>
-                    <Input
+                    <InputOTP
                       id="mfa-code"
-                      value={mfaCode}
-                      onChange={(e) => setMfaCode(e.target.value)}
-                      placeholder="000000"
                       maxLength={6}
+                      value={mfaCode}
+                      onChange={(value) => setMfaCode(value)}
                       autoFocus
-                    />
+                      onComplete={handleMfaVerify}
+                    >
+                      <InputOTPGroup>
+                        <InputOTPSlot index={0} />
+                        <InputOTPSlot index={1} />
+                        <InputOTPSlot index={2} />
+                        <InputOTPSlot index={3} />
+                        <InputOTPSlot index={4} />
+                        <InputOTPSlot index={5} />
+                      </InputOTPGroup>
+                    </InputOTP>
                   </Field>
                   <Field>
                     {error && (

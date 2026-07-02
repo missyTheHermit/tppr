@@ -334,6 +334,30 @@ export async function convertMistralOcrWithMistralChat(
     }
 
     onStatus?.("Reading Mistral conversion");
-    const converted = JSON.parse(stripJsonFences(chatText)) as Paper;
+    const stripped = stripJsonFences(chatText);
+    let converted: Paper;
+    try {
+        converted = JSON.parse(stripped) as Paper;
+    } catch (parseErr) {
+        // Try to extract the first JSON object from the text as a fallback
+        const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                converted = JSON.parse(jsonMatch[0]) as Paper;
+            } catch {
+                throw new Error(
+                    `Mistral returned invalid JSON: ${
+                        parseErr instanceof Error ? parseErr.message : "parse error"
+                    }`,
+                );
+            }
+        } else {
+            throw new Error(
+                `Mistral returned invalid JSON: ${
+                    parseErr instanceof Error ? parseErr.message : "parse error"
+                }`,
+            );
+        }
+    }
     return replaceImagePlaceholders(converted, imageAssets) as Paper;
 }
