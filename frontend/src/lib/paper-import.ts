@@ -102,6 +102,75 @@ export function cleanImportedPaperContent(paper: Paper): Paper {
     };
 }
 
+function dataUrlToBlob(dataUrl: string): { blob: Blob; mimeType: string } | null {
+    const match = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
+    if (!match) return null;
+    const mimeType = match[1];
+    try {
+        const byteString = atob(match[2]);
+        const bytes = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) {
+            bytes[i] = byteString.charCodeAt(i);
+        }
+        return { blob: new Blob([bytes], { type: mimeType }), mimeType };
+    } catch {
+        return null;
+    }
+}
+
+async function storeDataUrlImagesAsAssets(
+    paper: Paper,
+): Promise<Paper> {
+    async function resolveBlocks(blocks?: ContentBlock[]): Promise<ContentBlock[] | undefined> {
+        if (!blocks) return blocks;
+        const resolved: ContentBlock[] = [];
+        for (const block of blocks) {
+            if (block.kind === "image" && block.url.startsWith("data:")) {
+                const converted = dataUrlToBlob(block.url);
+                if (converted) {
+                    const assetId = await paperStore.saveAsset(paper.id, converted.blob);
+                    resolved.push({
+                        ...block,
+                        url: `asset://${assetId}`,
+                        mime_type: block.mime_type || converted.mimeType,
+                    });
+                    continue;
+                }
+            }
+            resolved.push(block);
+        }
+        return resolved;
+    }
+
+    async function resolvePart(part: QuestionPart): Promise<QuestionPart> {
+        return {
+            ...part,
+            stimulus: await resolveBlocks(part.stimulus),
+            content: await resolveBlocks(part.content),
+            parts: part.parts ? await Promise.all(part.parts.map(resolvePart)) : undefined,
+        };
+    }
+
+    const questions = await Promise.all(
+        paper.questions.map(async (question) => ({
+            ...question,
+            stimulus: await resolveBlocks(question.stimulus),
+            content: await resolveBlocks(question.content),
+            options: question.options
+                ? await Promise.all(
+                    question.options.map(async (option) => ({
+                        ...option,
+                        content: (await resolveBlocks(option.content)) ?? [],
+                    })),
+                )
+                : undefined,
+            parts: question.parts ? await Promise.all(question.parts.map(resolvePart)) : undefined,
+        })),
+    );
+
+    return { ...paper, questions };
+}
+
 function isValidTpprPaper(data: unknown): data is Paper {
     if (typeof data !== "object" || data === null) return false;
     const d = data as Record<string, unknown>;
@@ -158,20 +227,22 @@ export async function importPaperFromData(
     }
 
     const now = new Date().toISOString();
-    const imported: Paper = cleanImportedPaperContent({
-        ...data,
-        id: crypto.randomUUID(),
-        author_id: authorId,
-        visibility: "private",
-        created_at: now,
-        updated_at: now,
-        questions: data.questions.map((question, index) => ({
-            ...question,
-            number: index + 1,
+    const imported: Paper = await storeDataUrlImagesAsAssets(
+        cleanImportedPaperContent({
+            ...data,
+            id: crypto.randomUUID(),
             author_id: authorId,
-            paper_id: "",
-        })),
-    });
+            visibility: "private",
+            created_at: now,
+            updated_at: now,
+            questions: data.questions.map((question, index) => ({
+                ...question,
+                number: index + 1,
+                author_id: authorId,
+                paper_id: "",
+            })),
+        }),
+    );
     imported.questions = imported.questions.map((question) => ({
         ...question,
         paper_id: imported.id,
