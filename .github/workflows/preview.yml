@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BACKEND_URL: https://tppr.online
+  VITE_BACKEND_URL: https://tppr.online
   VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://cluyyfskyifnbjaylltt.supabase.co' }}
   VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Bns-As3rN7xwMuwNnrZp4w_fkwfdT6F' }}
   CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'tppr-preview' }}
@@ -60,7 +60,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ env.VITE_SUPABASE_PUBLISHABLE_KEY }}
-          BACKEND_URL: ${{ env.BACKEND_URL }}
+          VITE_BACKEND_URL: ${{ env.VITE_BACKEND_URL }}
         run: bun run build
 
       - name: Deploy to Cloudflare Pages
