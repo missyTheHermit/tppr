@@ -1,0 +1,124 @@
+name: Fork preview
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BACKEND_URL: https://tppr.online
+  VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://cluyyfskyifnbjaylltt.supabase.co' }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Bns-As3rN7xwMuwNnrZp4w_fkwfdT6F' }}
+  CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'tppr-preview' }}
+  UPSTREAM_REPOSITORY: tirbofish/tppr
+
+concurrency:
+  group: fork-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    name: Deploy fork preview
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "::error::Missing Cloudflare secrets on the fork repository."
+            exit 1
+          fi
+          if [ -z "${{ secrets.UPSTREAM_GITHUB_TOKEN }}" ]; then
+            echo "::error::Missing UPSTREAM_GITHUB_TOKEN on the fork repository."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ env.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          BACKEND_URL: ${{ env.BACKEND_URL }}
+        run: bun run build
+
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: ${{ env.CLOUDFLARE_PAGES_PROJECT }}
+          directory: frontend/dist
+
+      - name: Comment preview link on upstream PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.UPSTREAM_GITHUB_TOKEN }}
+          script: |
+            const upstream = process.env.UPSTREAM_REPOSITORY;
+            const [owner, repo] = upstream.split('/');
+            const branch = context.ref.replace('refs/heads/', '');
+            const head = `${context.repo.owner}:${branch}`;
+            const previewUrl = '${{ steps.deploy.outputs.url }}';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const { data: pulls } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head,
+              per_page: 10,
+            });
+
+            if (pulls.length === 0) {
+              core.notice(`No open upstream PR found for ${head}`);
+              return;
+            }
+
+            const body = [
+              '### Preview deployed',
+              '',
+              previewUrl ? `Preview: ${previewUrl}` : 'Cloudflare deployed, but did not return a preview URL.',
+              '',
+              `Commit: ${context.sha}`,
+              `Run: ${runUrl}`,
+            ].join('\n');
+            const marker = '### Preview deployed';
+
+            for (const pull of pulls) {
+              const issue_number = pull.number;
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number,
+                per_page: 100,
+              });
+              const previous = comments.find((comment) =>
+                comment.user.type === 'Bot' && comment.body?.includes(marker)
+              );
+
+              if (previous) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: previous.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              }
+            }

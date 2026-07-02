@@ -20,9 +20,21 @@ env:
   CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'tppr-preview' }}
 
 jobs:
+  fork-preview-note:
+    name: Fork preview handled by fork
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+
+    steps:
+      - name: Explain fork preview
+        run: |
+          echo "This pull request comes from a fork, so GitHub does not pass repository secrets to this workflow."
+          echo "The fork-preview workflow in the fork deploys Cloudflare Pages and comments back on the upstream PR."
+
   deploy-preview:
     name: Deploy preview
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Check Cloudflare secrets
