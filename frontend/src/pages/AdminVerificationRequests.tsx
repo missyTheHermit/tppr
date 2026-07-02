@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { CheckCircle2, ExternalLink, Search as SearchIcon, XCircle } from "lucide-react";
+import {
+    CheckCircle2,
+    ChevronDown,
+    ExternalLink,
+    Filter,
+    Search as SearchIcon,
+    X,
+    XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -59,11 +67,14 @@ export default function AdminVerificationRequests() {
     const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
     const [loading, setLoading] = useState(true);
     const [resolvingId, setResolvingId] = useState<string | null>(null);
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     const totalPages = useMemo(
         () => Math.max(1, Math.ceil(total / PER_PAGE)),
         [total],
     );
+
+    const hasActiveFilters = Boolean(query) || status !== "pending";
 
     async function load(nextPage = page, nextQuery = query, nextStatus = status) {
         setLoading(true);
@@ -111,6 +122,13 @@ export default function AdminVerificationRequests() {
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         updateSearchParams(1);
+        setFiltersOpen(false);
+    }
+
+    function clearFilters() {
+        setQuery("");
+        setStatus("pending");
+        updateSearchParams(1, "", "pending");
     }
 
     async function handleResolve(
@@ -177,52 +195,83 @@ export default function AdminVerificationRequests() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Submitted Papers</CardTitle>
-                        <CardDescription>
-                            Review owner-submitted sources and mark papers as verified.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-4">
-                        <form
-                            onSubmit={handleSubmit}
-                            className="flex flex-col gap-2 sm:flex-row"
-                        >
-                            <Input
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                placeholder="Search requests..."
-                                className="sm:max-w-md"
-                            />
-                            <Select value={status} onValueChange={setStatus}>
-                                <SelectTrigger className="sm:w-40">
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="approved">Approved</SelectItem>
-                                    <SelectItem value="rejected">Rejected</SelectItem>
-                                    <SelectItem value="all">All</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <div className="flex gap-2">
-                                <Button type="submit" disabled={loading}>
-                                    <SearchIcon data-icon="inline-start" />
-                                    Search
-                                </Button>
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                <CardTitle>Submitted Papers</CardTitle>
+                                <CardDescription>
+                                    Review owner-submitted sources and mark papers as verified.
+                                </CardDescription>
+                            </div>
+                            {/* Inline status badge + compact filter toggle */}
+                            <div className="flex items-center gap-2">
+                                <Badge variant={status === "pending" ? "outline" : "secondary"}>
+                                    {status}
+                                </Badge>
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => {
-                                        setQuery("");
-                                        setStatus("pending");
-                                        updateSearchParams(1, "", "pending");
-                                    }}
-                                    disabled={loading && !query}
+                                    size="sm"
+                                    onClick={() => setFiltersOpen((v) => !v)}
+                                    className="relative"
                                 >
-                                    Clear
+                                    <Filter className="mr-1.5 size-4" />
+                                    Filters
+                                    {hasActiveFilters && (
+                                        <span className="ml-1.5 flex size-2 rounded-full bg-primary" />
+                                    )}
+                                    <ChevronDown
+                                        className={`ml-1.5 size-4 transition-transform ${
+                                            filtersOpen ? "rotate-180" : ""
+                                        }`}
+                                    />
                                 </Button>
                             </div>
-                        </form>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                        {/* Collapsible filter controls */}
+                        {filtersOpen && (
+                            <form
+                                onSubmit={handleSubmit}
+                                className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row"
+                            >
+                                <Input
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    placeholder="Search requests..."
+                                    className="sm:max-w-md"
+                                />
+                                <Select value={status} onValueChange={setStatus}>
+                                    <SelectTrigger className="sm:w-40">
+                                        <SelectValue placeholder="Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="pending">Pending</SelectItem>
+                                        <SelectItem value="approved">Approved</SelectItem>
+                                        <SelectItem value="rejected">Rejected</SelectItem>
+                                        <SelectItem value="all">All</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <div className="flex gap-2">
+                                    <Button type="submit" disabled={loading}>
+                                        <SearchIcon data-icon="inline-start" />
+                                        Search
+                                    </Button>
+                                    {hasActiveFilters && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={clearFilters}
+                                            disabled={loading && !query}
+                                        >
+                                            <X className="size-4" />
+                                            Clear
+                                        </Button>
+                                    )}
+                                </div>
+                            </form>
+                        )}
 
                         {loading
                             ? (

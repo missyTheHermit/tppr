@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
+  Bell,
   FileText,
   Filter,
   LayoutDashboard,
@@ -17,13 +18,16 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/api/auth";
+import { getNotifications, type NotificationItem } from "@/api/social";
+import { cacheAvatarUrl } from "@/api/client";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { CreatePaperDialog } from "./create-paper-dialog";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -70,6 +74,33 @@ export default function NavBar() {
   const [showConfetti, setShowConfetti] = useState(false);
   const confettiDoneCount = useRef(0);
   const { width, height } = useWindowSize();
+
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
+    const items = await getNotifications();
+    setNotifications(items);
+  }, [user]);
+
+  // Poll for notifications every 60 seconds while logged in.
+  useEffect(() => {
+    if (!user) return;
+    fetchNotifications();
+    const id = window.setInterval(fetchNotifications, 60_000);
+    return () => window.clearInterval(id);
+  }, [user, fetchNotifications]);
+
+  // Re-fetch once when the dropdown is opened so the list is fresh.
+  useEffect(() => {
+    if (notificationsOpen) fetchNotifications();
+  }, [notificationsOpen, fetchNotifications]);
+
+  const unreadCount = notifications.length;
 
   function dismissGuide() {
     localStorage.setItem("hasSeenSearchGuide", "true");
@@ -272,11 +303,80 @@ export default function NavBar() {
                   </Link>
                 </Button>
 
-                <Button asChild variant="ghost" size="icon" className="size-8">
-                  <Link to="/friends">
-                    <Users className="size-4" />
-                  </Link>
-                </Button>
+                {/* Notification bell — replaces the standalone Friends icon.
+                    Pending friend requests appear here, and a Friends tab at
+                    the bottom links to /friends. */}
+                <DropdownMenu
+                  open={notificationsOpen}
+                  onOpenChange={setNotificationsOpen}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="relative size-8"
+                      aria-label="Notifications"
+                    >
+                      <Bell className="size-4" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -right-0.5 -top-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium leading-none text-primary-foreground">
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-72">
+                    <DropdownMenuLabel className="flex items-center justify-between">
+                      <span>Notifications</span>
+                      {unreadCount > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {unreadCount} new
+                        </span>
+                      )}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {notifications.length === 0
+                      ? (
+                        <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                          You're all caught up!
+                        </div>
+                      )
+                      : (
+                        notifications.map((n) => (
+                          <DropdownMenuItem
+                            key={n.id}
+                            className="gap-2 py-2"
+                            onClick={() => {
+                              setNotificationsOpen(false);
+                              navigate(n.href);
+                            }}
+                          >
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+                              <Users className="size-4" />
+                            </span>
+                            <span className="flex flex-col gap-0.5">
+                              <span className="text-sm">{n.content}</span>
+                              {n.createdAt && (
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(n.createdAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </span>
+                          </DropdownMenuItem>
+                        ))
+                      )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setNotificationsOpen(false);
+                        navigate("/friends");
+                      }}
+                    >
+                      <Users className="size-4" />
+                      Friends
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
                 <Dialog open={newPaperOpen} onOpenChange={setNewPaperOpen}>
                   <DialogTrigger asChild>
@@ -302,7 +402,7 @@ export default function NavBar() {
                               : (
                                 <Avatar className="size-8">
                                   <AvatarImage
-                                    src={user.avatar_url}
+                                    src={cacheAvatarUrl(user.avatar_url)}
                                     alt={user.username}
                                   />
                                   <AvatarFallback>

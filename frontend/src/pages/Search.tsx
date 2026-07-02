@@ -25,6 +25,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { type SearchFilters, searchPapers } from "@/lib/paper";
 import { StarPaperButton } from "@/components/star-paper-button";
 import { PaperVerifiedBadge } from "@/components/paper-verified-badge";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { SlidersHorizontal, X } from "lucide-react";
 
 const SUBJECTS_WITH_LEVELS = new Set([
     "Mathematics",
@@ -156,9 +162,22 @@ export default function Search() {
         setMaxDuration("");
     }
 
-    const hasActiveFilters = subject !== "all" || source !== "all" ||
-        courseLevel !== "all" || year || verified !== "all" || school ||
-        topic || outcome || minMarks || maxMarks || minDuration || maxDuration;
+    const activeFilterCount = [
+        subject !== "all",
+        courseLevel !== "all",
+        source !== "all",
+        Boolean(year),
+        verified !== "all",
+        Boolean(school),
+        Boolean(topic),
+        Boolean(outcome),
+        Boolean(minMarks),
+        Boolean(maxMarks),
+        Boolean(minDuration),
+        Boolean(maxDuration),
+    ].filter(Boolean).length;
+
+    const hasActiveFilters = activeFilterCount > 0;
 
     return (
         <>
@@ -178,142 +197,200 @@ export default function Search() {
                             <SearchIcon className="mr-2 size-4" />
                             Search
                         </Button>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <Select value={subject} onValueChange={setSubject}>
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Subject" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Any subject</SelectItem>
-                                <AllNESASubjectsList />
-                            </SelectContent>
-                        </Select>
-
-                        {showCourseLevel && (
-                            <Select
-                                value={courseLevel}
-                                onValueChange={setCourseLevel}
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="relative"
+                                >
+                                    <SlidersHorizontal className="mr-2 size-4" />
+                                    Filters
+                                    {activeFilterCount > 0 && (
+                                        <Badge
+                                            variant="default"
+                                            className="ml-2"
+                                        >
+                                            {activeFilterCount}
+                                        </Badge>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                                align="end"
+                                className="w-80 sm:w-96"
                             >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Level" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">
-                                        Any level
-                                    </SelectItem>
-                                    <SelectItem value="standard">
-                                        Standard
-                                    </SelectItem>
-                                    <SelectItem value="advanced">
-                                        Advanced
-                                    </SelectItem>
-                                    <SelectItem value="extension_1">
-                                        Extension 1
-                                    </SelectItem>
-                                    <SelectItem value="extension_2">
-                                        Extension 2
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        )}
+                                <div className="flex flex-col gap-4">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-medium">
+                                            Filters
+                                        </span>
+                                        {hasActiveFilters && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={clearFilters}
+                                                className="h-7 text-xs"
+                                            >
+                                                <X className="mr-1 size-3" />
+                                                Clear filters
+                                            </Button>
+                                        )}
+                                    </div>
 
-                        <Select value={source} onValueChange={setSource}>
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Source" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Any source</SelectItem>
-                                <SelectItem value="hsc">HSC</SelectItem>
-                                <SelectItem value="trial">Trial</SelectItem>
-                                <SelectItem value="internal">
-                                    Internal
-                                </SelectItem>
-                                <SelectItem value="practice">
-                                    Practice
-                                </SelectItem>
-                                <SelectItem value="custom">Custom</SelectItem>
-                            </SelectContent>
-                        </Select>
+                                    {/* Group 1: Core */}
+                                    <div className="flex flex-col gap-3">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                            Core
+                                        </span>
+                                        <Select value={subject} onValueChange={setSubject}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Subject" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Any subject</SelectItem>
+                                                <AllNESASubjectsList />
+                                            </SelectContent>
+                                        </Select>
 
-                        <Input
-                            type="number"
-                            placeholder="Year"
-                            value={year}
-                            onChange={(e) => setYear(e.target.value)}
-                            min={2000}
-                        />
-                        <Select value={verified} onValueChange={setVerified}>
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Verification" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">
-                                    Any verification
-                                </SelectItem>
-                                <SelectItem value="true">Verified</SelectItem>
-                                <SelectItem value="false">Unverified</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Input
-                            placeholder="School"
-                            value={school}
-                            onChange={(e) => setSchool(e.target.value)}
-                        />
-                        <Input
-                            placeholder="Topic"
-                            value={topic}
-                            onChange={(e) => setTopic(e.target.value)}
-                        />
-                        <Input
-                            placeholder="Outcome"
-                            value={outcome}
-                            onChange={(e) => setOutcome(e.target.value)}
-                        />
+                                        {showCourseLevel && (
+                                            <Select
+                                                value={courseLevel}
+                                                onValueChange={setCourseLevel}
+                                            >
+                                                <SelectTrigger className="w-full">
+                                                    <SelectValue placeholder="Level" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">
+                                                        Any level
+                                                    </SelectItem>
+                                                    <SelectItem value="standard">
+                                                        Standard
+                                                    </SelectItem>
+                                                    <SelectItem value="advanced">
+                                                        Advanced
+                                                    </SelectItem>
+                                                    <SelectItem value="extension_1">
+                                                        Extension 1
+                                                    </SelectItem>
+                                                    <SelectItem value="extension_2">
+                                                        Extension 2
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+
+                                        <Select value={source} onValueChange={setSource}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Source" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Any source</SelectItem>
+                                                <SelectItem value="hsc">HSC</SelectItem>
+                                                <SelectItem value="trial">Trial</SelectItem>
+                                                <SelectItem value="internal">
+                                                    Internal
+                                                </SelectItem>
+                                                <SelectItem value="practice">
+                                                    Practice
+                                                </SelectItem>
+                                                <SelectItem value="custom">Custom</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+
+                                        <Input
+                                            type="number"
+                                            placeholder="Year"
+                                            value={year}
+                                            onChange={(e) => setYear(e.target.value)}
+                                            min={2000}
+                                        />
+
+                                        <Select value={verified} onValueChange={setVerified}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Verification" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">
+                                                    Any verification
+                                                </SelectItem>
+                                                <SelectItem value="true">Verified</SelectItem>
+                                                <SelectItem value="false">Unverified</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    {/* Group 2: Details */}
+                                    <div className="flex flex-col gap-3">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                            Details
+                                        </span>
+                                        <Input
+                                            placeholder="School"
+                                            value={school}
+                                            onChange={(e) => setSchool(e.target.value)}
+                                        />
+                                        <Input
+                                            placeholder="Topic"
+                                            value={topic}
+                                            onChange={(e) => setTopic(e.target.value)}
+                                        />
+                                        <Input
+                                            placeholder="Outcome"
+                                            value={outcome}
+                                            onChange={(e) => setOutcome(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* Group 3: Ranges */}
+                                    <div className="flex flex-col gap-3">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                            Ranges
+                                        </span>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Input
+                                                type="number"
+                                                placeholder="Min marks"
+                                                value={minMarks}
+                                                onChange={(e) => setMinMarks(e.target.value)}
+                                                min={0}
+                                            />
+                                            <Input
+                                                type="number"
+                                                placeholder="Max marks"
+                                                value={maxMarks}
+                                                onChange={(e) => setMaxMarks(e.target.value)}
+                                                min={0}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Input
+                                                type="number"
+                                                placeholder="Min duration"
+                                                value={minDuration}
+                                                onChange={(e) => setMinDuration(e.target.value)}
+                                                min={0}
+                                            />
+                                            <Input
+                                                type="number"
+                                                placeholder="Max duration"
+                                                value={maxDuration}
+                                                onChange={(e) => setMaxDuration(e.target.value)}
+                                                min={0}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <Button type="submit" disabled={loading}>
+                                        <SearchIcon className="mr-2 size-4" />
+                                        Apply
+                                    </Button>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
                     </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <Input
-                            type="number"
-                            placeholder="Min marks"
-                            value={minMarks}
-                            onChange={(e) => setMinMarks(e.target.value)}
-                            min={0}
-                        />
-                        <Input
-                            type="number"
-                            placeholder="Max marks"
-                            value={maxMarks}
-                            onChange={(e) => setMaxMarks(e.target.value)}
-                            min={0}
-                        />
-                        <Input
-                            type="number"
-                            placeholder="Min duration"
-                            value={minDuration}
-                            onChange={(e) => setMinDuration(e.target.value)}
-                            min={0}
-                        />
-                        <Input
-                            type="number"
-                            placeholder="Max duration"
-                            value={maxDuration}
-                            onChange={(e) => setMaxDuration(e.target.value)}
-                            min={0}
-                        />
-                    </div>
-
-                    {hasActiveFilters && (
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={clearFilters}
-                        >
-                            Clear filters
-                        </Button>
-                    )}
                 </form>
 
                 {loading

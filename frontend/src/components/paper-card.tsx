@@ -13,15 +13,21 @@ import {
     HoverCardContent,
     HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { Clock, Globe, Lock, Trash2 } from "lucide-react";
+import { BarChart3, Clock, Globe, Lock, Trash2 } from "lucide-react";
 import { QuestionSample } from "@/components/question-sample";
 import type { PaperMeta } from "@/types/tppr-paper";
 import { PaperSettings } from "./paper-settings";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StarPaperButton } from "@/components/star-paper-button";
 import { PaperVerifiedBadge } from "@/components/paper-verified-badge";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { getStarCount } from "@/api/stars";
+import { useAuth } from "@/api/auth";
+import { Link } from "react-router-dom";
+
+/** Module-level cache: paperId → star count. Avoids refetching on re-render. */
+const starCountCache = new Map<string, number>();
 
 interface PaperCardProps {
     paper: PaperMeta;
@@ -34,8 +40,37 @@ interface PaperCardProps {
 export function PaperCard(
     { paper, onOpen, onEdit, onDelete, deleting = false }: PaperCardProps,
 ) {
+    const { user } = useAuth();
     const [hoverOpen, setHoverOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [starCount, setStarCount] = useState<number | null>(() =>
+        starCountCache.has(paper.id)
+            ? starCountCache.get(paper.id)!
+            : null,
+    );
+
+    // Fetch the star count once per paper (cached in a module-level Map).
+    useEffect(() => {
+        if (starCountCache.has(paper.id)) {
+            setStarCount(starCountCache.get(paper.id)!);
+            return;
+        }
+        let cancelled = false;
+        getStarCount(paper.id)
+            .then((count) => {
+                if (cancelled) return;
+                starCountCache.set(paper.id, count);
+                setStarCount(count);
+            })
+            .catch(() => {
+                if (!cancelled) setStarCount(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [paper.id]);
+
+    const isAuthor = Boolean(user && user.user_id === paper.author_id);
 
     return (
         <HoverCard
@@ -137,7 +172,25 @@ export function PaperCard(
                     </CardContent>
 
                     <CardFooter className="justify-end gap-1">
+                        {starCount !== null && (
+                            <span className="self-center text-sm font-medium tabular-nums text-muted-foreground select-none">
+                                {starCount}
+                            </span>
+                        )}
                         <StarPaperButton paperId={paper.id} />
+                        {isAuthor && (
+                            <Button
+                                asChild
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <Link to={`/papers/${paper.id}/stats`}>
+                                    <BarChart3 className="size-4" />
+                                </Link>
+                            </Button>
+                        )}
                         <span onClick={(e) => e.stopPropagation()}>
                             <PaperSettings
                                 paper={paper}

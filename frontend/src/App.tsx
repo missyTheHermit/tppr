@@ -22,6 +22,7 @@ import Settings from "./pages/Settings";
 import Friends from "./pages/Friends";
 import Leaderboard from "./pages/Leaderboard";
 import Dashboard from "./pages/Dashboard";
+import PaperStats from "./pages/PaperStats";
 import { PresenceHeartbeat } from "./components/presence-heartbeat";
 import UserProfile from "./pages/UserProfile";
 
@@ -45,6 +46,7 @@ function App() {
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/papers/:id/stats" element={<PaperStats />} />
               <Route path="/papers/:id" element={<PaperEditor />} />
               <Route path="/papers" element={<PapersViewer />} />
               <Route path="/unauthorized" element={<Unauthorized />} />

@@ -150,6 +150,30 @@ export async function clearActivePaperPresence(): Promise<UserPresence> {
     return jsonOrThrow(res, "Failed to clear presence");
 }
 
+export interface NotificationItem {
+    id: string;
+    type: "friend_request";
+    content: string;
+    /** Route to navigate to when the notification is clicked. */
+    href: string;
+    createdAt?: string;
+}
+
+export async function getNotifications(): Promise<NotificationItem[]> {
+    try {
+        const { requests } = await listIncomingRequests();
+        return requests.map((req) => ({
+            id: `friend-request-${req.id}`,
+            type: "friend_request" as const,
+            content: `${req.username} sent you a friend request`,
+            href: "/friends",
+            createdAt: req.created_at,
+        }));
+    } catch {
+        return [];
+    }
+}
+
 export async function getUserProfile(userId: string): Promise<UserProfile> {
     const res = await apiFetch(`/api/users/${userId}/profile`);
     return jsonOrThrow(res, "Failed to load profile");

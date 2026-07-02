@@ -38,3 +38,17 @@ export async function getAllUserStats(): Promise<{ users: AllUserStats[] }> {
     const res = await apiFetch("/api/stats/users");
     return jsonOrThrow(res, "Failed to load user stats");
 }
+
+export interface AuthorStats {
+    total_attempts: number;
+    unique_attempters: number;
+    completion_rate: number;
+    average_completion_seconds: number | null;
+    average_reveal_count: number | null;
+    star_count: number;
+}
+
+export async function getAuthorStats(paperId: string): Promise<AuthorStats> {
+    const res = await apiFetch(`/api/papers/${paperId}/author-stats`);
+    return jsonOrThrow(res, "Failed to load author stats");
+}

@@ -29,22 +29,25 @@ import { toast } from "sonner";
 import type { CourseLevel, PaperSource, Visibility } from "@/types/tppr-paper";
 import { createLocalPaper } from "@/lib/paper";
 import { parseListField } from "@/lib/paper-fields";
-import { importPaperFromData, importPaperFromJsonFile } from "@/lib/paper-import";
+import { importPaperFromJsonFile } from "@/lib/paper-import";
 import { useAuth } from "@/api/auth";
 import { useNavigate } from "react-router-dom";
-import { Bell, FileJson, FilePlus2, FileText } from "lucide-react";
 import {
-    convertMistralOcrWithMistralChat,
-    ocrPdfWithMistral,
-} from "@/api/mistral-ocr";
+    ChevronDown,
+    ChevronRight,
+    FileJson,
+    FilePlus2,
+    FileText,
+} from "lucide-react";
 import { getStoredMistralApiKey } from "@/lib/mistral-settings";
+import { startPdfImport } from "@/lib/pdf-import-jobs";
 
 export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
     const { user } = useAuth();
     const navigate = useNavigate();
     const importInputRef = useRef<HTMLInputElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
-    
+
     const [mode, setMode] = useState<"choose" | "create">("choose");
     const [subject, setSubject] = useState("");
     const [courseLevel, setCourseLevel] = useState("");
@@ -52,30 +55,8 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
     const [visibility, setVisibility] = useState("private");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
-    const [progressText, setProgressText] = useState("");
-    const [notifyArmed, setNotifyArmed] = useState(false);
-    const notifyWhenDoneRef = useRef(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
     const showCourseLevel = subject === "Mathematics" || subject === "English";
-
-    async function armDoneNotification() {
-        notifyWhenDoneRef.current = true;
-        setNotifyArmed(true);
-        if (!("Notification" in window)) {
-            toast.info("I'll notify you here when the import finishes.");
-            return;
-        }
-        if (Notification.permission === "default") {
-            await Notification.requestPermission();
-        }
-        toast.info("I'll notify you when the import finishes.");
-    }
-
-    function notifyImportDone(title: string, body: string) {
-        if (!notifyWhenDoneRef.current) return;
-        if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(title, { body });
-        }
-    }
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -88,7 +69,6 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
             return;
         }
         setError("");
-        setProgressText("");
         setSubmitting(true);
 
         const formData = new FormData(e.currentTarget);
@@ -129,7 +109,6 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
         }
 
         setError("");
-        setProgressText("");
         setSubmitting(true);
         try {
             const paper = await importPaperFromJsonFile(file, String(user.user_id));
@@ -147,7 +126,7 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
         }
     }
 
-    async function handleImportPdf(file: File | undefined) {
+    function handleImportPdf(file: File | undefined) {
         if (!file) return;
         if (!user) {
             setError("You gotta be logged in to import a paper");
@@ -162,41 +141,26 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
             return;
         }
 
-        setError("");
-        setProgressText("Preparing PDF");
-        setSubmitting(true);
-        setNotifyArmed(false);
-        notifyWhenDoneRef.current = false;
-        try {
-            const ocrDocument = await ocrPdfWithMistral(file, {
-                apiKey,
-                onStatus: setProgressText,
-            });
-            const converted = await convertMistralOcrWithMistralChat(
-                ocrDocument,
-                {
-                    apiKey,
-                    onStatus: setProgressText,
-                },
-            );
-            setProgressText("Saving paper");
-            const paper = await importPaperFromData(converted, String(user.user_id));
-            toast.success(`Imported "${paper.title}"`);
-            notifyImportDone("TPPR import complete", `"${paper.title}" is ready.`);
-            onCreated?.();
-            navigate(`/papers/${paper.id}`);
-        } catch (error) {
-            const message = error instanceof Error
-                ? error.message
-                : "Failed to import PDF";
+        // Close the dialog immediately and start the import in the background.
+        // The pipeline runs detached; progress and results persist to
+        // localStorage so they survive a tab close/reopen.
+        const jobId = startPdfImport(file, {
+            userId: String(user.user_id),
+            onCreated,
+        });
+        if (!jobId) {
+            const message = "Could not start the background import.";
             setError(message);
             toast.error(message);
-            notifyImportDone("TPPR import failed", message);
-        } finally {
-            setProgressText("");
-            setSubmitting(false);
-            setNotifyArmed(false);
+            return;
         }
+
+        toast.success("Importing PDF in background...", {
+            description: file.name,
+        });
+        // Reset the dialog so the next open starts fresh.
+        setMode("choose");
+        setError("");
     }
 
     return (
@@ -242,7 +206,7 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
                             <FileText data-icon="inline-start" />
                             <span className="font-medium">Import PDF</span>
                             <span className="text-sm font-normal text-muted-foreground">
-                                Upload directly to Mistral OCR.
+                                Runs in the background after selection.
                             </span>
                         </Button>
                         <Button
@@ -278,27 +242,6 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
                             {error}
                         </p>
                     )}
-                    {progressText && (
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                            <span>{progressText}...</span>
-                            {progressText === "Converting OCR with Mistral chat" && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={notifyArmed}
-                                    onClick={() => {
-                                        void armDoneNotification();
-                                    }}
-                                >
-                                    <Bell data-icon="inline-start" />
-                                    {notifyArmed
-                                        ? "Notification set"
-                                        : "Notify me when it's done!"}
-                                </Button>
-                            )}
-                        </div>
-                    )}
                 </>
             )}
 
@@ -322,148 +265,17 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
                         />
                     </Field>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <Field className={showCourseLevel ? "" : "col-span-2"}>
-                            <FieldLabel htmlFor="subject">Subject</FieldLabel>
-                            <Select value={subject} onValueChange={setSubject}>
-                                <SelectTrigger id="subject" className="w-full">
-                                    <SelectValue placeholder="Select a subject" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <AllNESASubjectsList />
-                                </SelectContent>
-                            </Select>
-                        </Field>
-
-                        {showCourseLevel && (
-                            <Field>
-                                <FieldLabel htmlFor="course-level">
-                                    Level
-                                </FieldLabel>
-                                <Select
-                                    value={courseLevel}
-                                    onValueChange={setCourseLevel}
-                                >
-                                    <SelectTrigger
-                                        id="course-level"
-                                        className="w-full"
-                                    >
-                                        <SelectValue placeholder="Select level" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="standard">
-                                            Standard
-                                        </SelectItem>
-                                        <SelectItem value="advanced">
-                                            Advanced
-                                        </SelectItem>
-                                        <SelectItem value="extension_1">
-                                            Extension 1
-                                        </SelectItem>
-                                        <SelectItem value="extension_2">
-                                            Extension 2
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </Field>
-                        )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <Field>
-                            <FieldLabel htmlFor="year">Year</FieldLabel>
-                            <Input
-                                id="year"
-                                name="year"
-                                type="number"
-                                min={1990}
-                                placeholder="2024"
-                            />
-                        </Field>
-                        <Field>
-                            <FieldLabel htmlFor="source">Source</FieldLabel>
-                            <Select value={source} onValueChange={setSource}>
-                                <SelectTrigger id="source" className="w-full">
-                                    <SelectValue placeholder="Source" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="hsc">HSC</SelectItem>
-                                    <SelectItem value="trial">Trial</SelectItem>
-                                    <SelectItem value="internal">
-                                        Internal
-                                    </SelectItem>
-                                    <SelectItem value="practice">
-                                        Practice
-                                    </SelectItem>
-                                    <SelectItem value="custom">
-                                        Custom
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </Field>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <Field>
-                            <FieldLabel htmlFor="duration_minutes">
-                                Duration (min)
-                            </FieldLabel>
-                            <Input
-                                id="duration_minutes"
-                                name="duration_minutes"
-                                type="number"
-                                min={0}
-                                max={600}
-                                placeholder="180"
-                            />
-                        </Field>
-                        <Field>
-                            <FieldLabel htmlFor="school">School</FieldLabel>
-                            <Input
-                                id="school"
-                                name="school"
-                                placeholder="e.g. Baulkham Hills"
-                            />
-                        </Field>
-                    </div>
-
                     <Field>
-                        <FieldLabel htmlFor="syllabus_id">Syllabus ID</FieldLabel>
-                        <Input
-                            id="syllabus_id"
-                            name="syllabus_id"
-                            placeholder="e.g. hsc-physics-2025"
-                        />
+                        <FieldLabel htmlFor="subject">Subject</FieldLabel>
+                        <Select value={subject} onValueChange={setSubject}>
+                            <SelectTrigger id="subject" className="w-full">
+                                <SelectValue placeholder="Select a subject" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <AllNESASubjectsList />
+                            </SelectContent>
+                        </Select>
                     </Field>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <Field>
-                            <FieldLabel htmlFor="topics">Topic tags</FieldLabel>
-                            <Textarea
-                                id="topics"
-                                name="topics"
-                                placeholder="kinematics, projectile motion"
-                                rows={3}
-                            />
-                            <FieldDescription>
-                                Separate tags with commas or new lines.
-                            </FieldDescription>
-                        </Field>
-                        <Field>
-                            <FieldLabel htmlFor="outcomes">
-                                Outcome codes
-                            </FieldLabel>
-                            <Textarea
-                                id="outcomes"
-                                name="outcomes"
-                                placeholder="PH12-12, PH12-13"
-                                rows={3}
-                            />
-                            <FieldDescription>
-                                Separate outcome codes with commas or new lines.
-                            </FieldDescription>
-                        </Field>
-                    </div>
 
                     <Field>
                         <FieldLabel>Visibility</FieldLabel>
@@ -487,6 +299,157 @@ export function CreatePaperDialog({ onCreated }: { onCreated?: () => void }) {
                             Public papers appear in the shared question pool.
                         </FieldDescription>
                     </Field>
+
+                    {/* Advanced section - collapsed by default */}
+                    <div className="rounded-lg border">
+                        <button
+                            type="button"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-muted/50"
+                            onClick={() => setShowAdvanced((v) => !v)}
+                            aria-expanded={showAdvanced}
+                        >
+                            {showAdvanced
+                                ? <ChevronDown className="size-4" />
+                                : <ChevronRight className="size-4" />}
+                            Advanced
+                            <span className="text-xs font-normal text-muted-foreground">
+                                (optional)
+                            </span>
+                        </button>
+
+                        {showAdvanced && (
+                            <div className="flex flex-col gap-4 px-3 pb-3 pt-1">
+                                <div className="grid grid-cols-2 gap-4">
+                                    {showCourseLevel && (
+                                        <Field>
+                                            <FieldLabel htmlFor="course-level">
+                                                Level
+                                            </FieldLabel>
+                                            <Select
+                                                value={courseLevel}
+                                                onValueChange={setCourseLevel}
+                                            >
+                                                <SelectTrigger
+                                                    id="course-level"
+                                                    className="w-full"
+                                                >
+                                                    <SelectValue placeholder="Select level" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="standard">
+                                                        Standard
+                                                    </SelectItem>
+                                                    <SelectItem value="advanced">
+                                                        Advanced
+                                                    </SelectItem>
+                                                    <SelectItem value="extension_1">
+                                                        Extension 1
+                                                    </SelectItem>
+                                                    <SelectItem value="extension_2">
+                                                        Extension 2
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </Field>
+                                    )}
+                                    <Field className={showCourseLevel ? "" : "col-span-2"}>
+                                        <FieldLabel htmlFor="source">Source</FieldLabel>
+                                        <Select value={source} onValueChange={setSource}>
+                                            <SelectTrigger id="source" className="w-full">
+                                                <SelectValue placeholder="Source" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="hsc">HSC</SelectItem>
+                                                <SelectItem value="trial">Trial</SelectItem>
+                                                <SelectItem value="internal">
+                                                    Internal
+                                                </SelectItem>
+                                                <SelectItem value="practice">
+                                                    Practice
+                                                </SelectItem>
+                                                <SelectItem value="custom">
+                                                    Custom
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </Field>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <Field>
+                                        <FieldLabel htmlFor="year">Year</FieldLabel>
+                                        <Input
+                                            id="year"
+                                            name="year"
+                                            type="number"
+                                            min={1990}
+                                            placeholder="2024"
+                                        />
+                                    </Field>
+                                    <Field>
+                                        <FieldLabel htmlFor="duration_minutes">
+                                            Duration (min)
+                                        </FieldLabel>
+                                        <Input
+                                            id="duration_minutes"
+                                            name="duration_minutes"
+                                            type="number"
+                                            min={0}
+                                            max={600}
+                                            placeholder="180"
+                                        />
+                                    </Field>
+                                </div>
+
+                                <Field>
+                                    <FieldLabel htmlFor="school">School</FieldLabel>
+                                    <Input
+                                        id="school"
+                                        name="school"
+                                        placeholder="e.g. Baulkham Hills"
+                                    />
+                                </Field>
+
+                                <Field>
+                                    <FieldLabel htmlFor="syllabus_id">Syllabus ID</FieldLabel>
+                                    <Input
+                                        id="syllabus_id"
+                                        name="syllabus_id"
+                                        placeholder="e.g. hsc-physics-2025"
+                                    />
+                                </Field>
+
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <Field>
+                                        <FieldLabel htmlFor="topics">Topic tags</FieldLabel>
+                                        <Textarea
+                                            id="topics"
+                                            name="topics"
+                                            placeholder="kinematics, projectile motion"
+                                            rows={3}
+                                        />
+                                        <FieldDescription>
+                                            Separate tags with commas or new lines.
+                                        </FieldDescription>
+                                    </Field>
+                                    <Field>
+                                        <FieldLabel htmlFor="outcomes">
+                                            Outcome codes
+                                        </FieldLabel>
+                                        <Textarea
+                                            id="outcomes"
+                                            name="outcomes"
+                                            placeholder="PH12-12, PH12-13"
+                                            rows={3}
+                                        />
+                                        <FieldDescription>
+                                            Separate outcome codes with commas or new lines.
+                                        </FieldDescription>
+                                    </Field>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </FieldGroup>
 
                 <DialogFooter className="mt-4">

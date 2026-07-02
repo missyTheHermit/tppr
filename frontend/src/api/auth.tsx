@@ -14,6 +14,14 @@ import { toast } from "sonner";
 import { apiFetch } from "./client";
 
 const PENDING_EMAIL_CONFIRMATION_KEY = "tppr:pending-email-confirmation";
+const CACHED_USER_KEY = "tppr:cached-user";
+/** How long the cached user is considered fresh, in milliseconds. */
+const USER_CACHE_TTL = 5 * 60 * 1000;
+
+interface CachedUser {
+  user: User;
+  timestamp: number;
+}
 
 interface User {
   user_id: string; // Supabase uses UUIDs
@@ -77,35 +85,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiFetch("/api/whoami");
       if (!res.ok) return;
       const data = await res.json();
-      setUser((prev) =>
-        prev
+      setUser((prev) => {
+        const next = prev
           ? {
-            ...prev,
-            username: data.username ?? prev.username,
-            email: data.email ?? prev.email,
-            avatar_url: data.avatar_url,
-            admin: Boolean(data.admin),
-            admin_available: Boolean(data.admin_available),
+              ...prev,
+              username: data.username ?? prev.username,
+              email: data.email ?? prev.email,
+              avatar_url: data.avatar_url,
+              admin: Boolean(data.admin),
+              admin_available: Boolean(data.admin_available),
+            }
+          : prev;
+        if (next) {
+          const cached: CachedUser = {
+            user: next,
+            timestamp: Date.now(),
+          };
+          try {
+            localStorage.setItem(CACHED_USER_KEY, JSON.stringify(cached));
+          } catch {
+            // localStorage may be unavailable (private mode, quota, etc.).
           }
-          : prev,
-      );
+        }
+        return next;
+      });
     } catch {
       // Backend may be temporarily unreachable; leave the cached user as-is.
     }
   }, []);
 
+  // Read the cached user from localStorage so we can render instantly on
+  // initial mount. Returns null if the cache is missing or malformed.
+  const readCachedUser = useCallback((): CachedUser | null => {
+    try {
+      const raw = localStorage.getItem(CACHED_USER_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as CachedUser;
+      if (!parsed?.user || typeof parsed.timestamp !== "number") return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
-    // Get initial session
+    // Get initial session — hydrate from cache first, then refresh if stale.
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ? mapUser(session.user) : null);
-      setLoading(false);
-      if (session?.user) refreshUser();
+      if (session?.user) {
+        const mapped = mapUser(session.user);
+        // Merge cached profile fields (avatar, admin, etc.) with the
+        // freshly-mapped Supabase session user.
+        const cached = readCachedUser();
+        setUser(
+          cached && cached.user.user_id === mapped.user_id
+            ? { ...mapped, ...cached.user }
+            : mapped,
+        );
+        setLoading(false);
+
+        // Only hit the backend if the cache is stale.
+        const cachedTimestamp = cached?.timestamp ?? 0;
+        if (
+          !cached ||
+          cached.user.user_id !== mapped.user_id ||
+          Date.now() - cachedTimestamp > USER_CACHE_TTL
+        ) {
+          refreshUser();
+        }
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
     });
 
     // Listen for auth changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ? mapUser(session.user) : null);
+        // Only refresh from the backend on genuine sign-in / initial session —
+        // NOT on TOKEN_REFRESHED, which can fire on window focus and causes
+        // unnecessary refetches.
         if (
           session?.user &&
           (event === "SIGNED_IN" || event === "INITIAL_SESSION")
@@ -125,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => subscription.unsubscribe();
-  }, [refreshUser]);
+  }, [refreshUser, readCachedUser]);
 
   async function login(formData: FormData): Promise<string | null> {
     const email = formData.get("email") as string;
