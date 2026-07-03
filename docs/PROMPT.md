@@ -71,7 +71,15 @@ if this part can stand alone without prior parts' context>, "answer":
    context.
 9. Marks on a `long_answer` question = sum of all part marks.
 10. Generate unique UUIDs for every `id` field.
-11. ALWAYS populate the `answer` field. If the paper includes answers or a
+11. Remove OCR junk and administrative rubbish before writing content. Keep only
+    material needed to answer the questions: question text, stimulus, diagrams,
+    tables, options, marks, answer keys, and marking criteria. Drop personal
+    identifiers, cover-page form fields, seating/centre metadata, blank writing
+    areas, page furniture, repeated headers/footers, barcode text, scanning
+    artefacts, and exam-room instructions that are not part of a question.
+12. Do not preserve labelled blank fields or filled-in administrative fields in
+    the paper title, stimulus, question content, options, answers, or rubrics.
+13. ALWAYS populate the `answer` field. If the paper includes answers or a
     marking guide, use those. If not, solve the question yourself and provide:
     - For multiple_choice: set `answer.option_label` to the correct letter and
       `answer.summary` explaining why.

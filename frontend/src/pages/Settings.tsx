@@ -5,6 +5,11 @@ import NavBar from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
+import {
     Avatar,
     AvatarFallback,
     AvatarImage,
@@ -23,6 +28,8 @@ import { toast } from "sonner";
 import { Key, Copy, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/api/client";
+import { syncService } from "@/lib/cloud";
+import { paperStore } from "@/lib/paper";
 import {
   createApiKey,
   listApiKeys,
@@ -49,7 +56,7 @@ import {
  * databases we may have created. Keys are removed if they start with
  * `tppr`, start with `hasSeen`, or contain `tppr` anywhere in the name.
  */
-export function clearTpprLocalStorage() {
+async function clearTpprLocalStorage() {
     // localStorage keys
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -66,16 +73,26 @@ export function clearTpprLocalStorage() {
     for (const key of toRemove) localStorage.removeItem(key);
 
     // IndexedDB — best-effort wipe of any tppr-prefixed databases.
+    try {
+        await paperStore.clearAll();
+    } catch {
+        /* ignore, the database may not exist yet */
+    }
+
     if (typeof indexedDB !== "undefined" && indexedDB.databases) {
-        indexedDB.databases().then((dbs) => {
-            for (const db of dbs) {
-                if (db.name && db.name.includes("tppr")) {
-                    indexedDB.deleteDatabase(db.name);
-                }
-            }
-        }).catch(() => {
-            /* ignore — not all browsers support indexedDB.databases() */
-        });
+        const dbs = await indexedDB.databases().catch(() => []);
+        await Promise.all(
+            dbs
+                .filter((db) => db.name && db.name.includes("tppr"))
+                .map((db) =>
+                    new Promise<void>((resolve) => {
+                        const req = indexedDB.deleteDatabase(db.name!);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => resolve();
+                        req.onblocked = () => resolve();
+                    })
+                ),
+        );
     }
 }
 
@@ -92,6 +109,12 @@ export default function Settings() {
     const [avatarSaving, setAvatarSaving] = useState(false);
     const [resetDataOpen, setResetDataOpen] = useState(false);
     const [resettingData, setResettingData] = useState(false);
+    const [savingUsername, setSavingUsername] = useState(false);
+    const [savingPassword, setSavingPassword] = useState(false);
+    const [deletingAccount, setDeletingAccount] = useState(false);
+    const [revokingKeyId, setRevokingKeyId] = useState<number | null>(null);
+    const [verifyingEnrollment, setVerifyingEnrollment] = useState(false);
+    const [unenrollingId, setUnenrollingId] = useState<string | null>(null);
     const avatarInputRef = useRef<HTMLInputElement>(null);
 
     const [mfaFactors, setMfaFactors] = useState<
@@ -155,12 +178,14 @@ export default function Settings() {
 
     async function handleVerifyEnrollment() {
         if (!enrollData) return;
+        setVerifyingEnrollment(true);
         const { data: challenge, error: challengeErr } = await supabase.auth.mfa
             .challenge({
                 factorId: enrollData.id,
             });
         if (challengeErr) {
             toast.error(challengeErr.message);
+            setVerifyingEnrollment(false);
             return;
         }
 
@@ -171,6 +196,7 @@ export default function Settings() {
         });
         if (verifyErr) {
             toast.error(verifyErr.message);
+            setVerifyingEnrollment(false);
             return;
         }
 
@@ -181,11 +207,14 @@ export default function Settings() {
 
         const { data } = await supabase.auth.mfa.listFactors();
         if (data?.totp) setMfaFactors(data.totp);
+        setVerifyingEnrollment(false);
     }
 
     async function handleUnenroll(factorId: string) {
         if (!confirm("Disable two-factor authentication?")) return;
+        setUnenrollingId(factorId);
         const { error } = await supabase.auth.mfa.unenroll({ factorId });
+        setUnenrollingId(null);
         if (error) {
             toast.error(error.message);
             return;
@@ -195,13 +224,34 @@ export default function Settings() {
     }
 
     async function handleUpdateUsername() {
+        const trimmed = username.trim();
+        if (!trimmed) {
+            toast.error("Username is required");
+            return;
+        }
+        setSavingUsername(true);
         const { error } = await supabase.auth.updateUser({
-            data: { username },
+            data: { username: trimmed },
         });
         if (error) {
             toast.error(error.message);
+            setSavingUsername(false);
         } else {
+            const form = new FormData();
+            form.set("username", trimmed);
+            const res = await apiFetch("/api/account/username", {
+                method: "PUT",
+                body: form,
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                toast.error(body?.message ?? "Failed to update username");
+                setSavingUsername(false);
+                return;
+            }
+            await refreshUser();
             toast.success("Username updated");
+            setSavingUsername(false);
         }
     }
 
@@ -270,9 +320,11 @@ export default function Settings() {
             toast.error("Password must be at least 6 characters");
             return;
         }
+        setSavingPassword(true);
         const { error } = await supabase.auth.updateUser({
             password: newPassword,
         });
+        setSavingPassword(false);
         if (error) {
             toast.error(error.message);
         } else {
@@ -303,7 +355,8 @@ export default function Settings() {
                 toast.error(body?.message ?? "Failed to reset account data");
                 return;
             }
-            clearTpprLocalStorage();
+            syncService.discardPending();
+            await clearTpprLocalStorage();
             toast.success("Account data reset");
             setResetDataOpen(false);
             // Refresh the page so all in-memory state is wiped cleanly.
@@ -316,10 +369,12 @@ export default function Settings() {
     }
 
     async function handleDeleteAccount() {
+        setDeletingAccount(true);
         const res = await apiFetch("/api/account", { method: "DELETE" });
         if (!res.ok) {
             const body = await res.json().catch(() => null);
             toast.error(body?.message ?? "Failed to delete account");
+            setDeletingAccount(false);
             return;
         }
         await supabase.auth.signOut();
@@ -344,12 +399,15 @@ export default function Settings() {
     }
 
     async function handleRevokeKey(keyId: number) {
+        setRevokingKeyId(keyId);
         try {
             await revokeApiKey(keyId);
             toast.success("API key revoked");
             setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
         } catch (err: any) {
             toast.error(err?.message ?? "Failed to revoke API key");
+        } finally {
+            setRevokingKeyId(null);
         }
     }
 
@@ -458,8 +516,8 @@ export default function Settings() {
                                         setUsername(e.target.value)}
                                 />
                             </Field>
-                            <Button onClick={handleUpdateUsername} size="sm">
-                                Save Username
+                            <Button onClick={handleUpdateUsername} size="sm" disabled={savingUsername}>
+                                {savingUsername ? "Saving..." : "Save Username"}
                             </Button>
                         </FieldGroup>
                     </CardContent>
@@ -493,8 +551,8 @@ export default function Settings() {
                                         setConfirmPassword(e.target.value)}
                                 />
                             </Field>
-                            <Button onClick={handleChangePassword} size="sm">
-                                Update Password
+                            <Button onClick={handleChangePassword} size="sm" disabled={savingPassword}>
+                                {savingPassword ? "Updating..." : "Update Password"}
                             </Button>
                         </FieldGroup>
                     </CardContent>
@@ -712,6 +770,7 @@ export default function Settings() {
                                                 variant="ghost"
                                                 size="icon"
                                                 className="text-destructive hover:text-destructive shrink-0"
+                                                disabled={revokingKeyId === key.id}
                                                 onClick={() => {
                                                     if (
                                                         confirm(
@@ -763,10 +822,11 @@ export default function Settings() {
                                             <Button
                                                 variant="destructive"
                                                 size="sm"
+                                                disabled={unenrollingId === f.id}
                                                 onClick={() =>
                                                     handleUnenroll(f.id)}
                                             >
-                                                Remove
+                                                {unenrollingId === f.id ? "Removing..." : "Remove"}
                                             </Button>
                                         </div>
                                     ))}
@@ -798,20 +858,29 @@ export default function Settings() {
                                         <FieldLabel>
                                             Enter the 6-digit code from your app
                                         </FieldLabel>
-                                        <Input
-                                            value={verifyCode}
-                                            onChange={(e) =>
-                                                setVerifyCode(e.target.value)}
-                                            placeholder="000000"
+                                        <InputOTP
                                             maxLength={6}
-                                        />
+                                            value={verifyCode}
+                                            onChange={(value) => setVerifyCode(value)}
+                                            onComplete={handleVerifyEnrollment}
+                                        >
+                                            <InputOTPGroup>
+                                                <InputOTPSlot index={0} />
+                                                <InputOTPSlot index={1} />
+                                                <InputOTPSlot index={2} />
+                                                <InputOTPSlot index={3} />
+                                                <InputOTPSlot index={4} />
+                                                <InputOTPSlot index={5} />
+                                            </InputOTPGroup>
+                                        </InputOTP>
                                     </Field>
                                     <div className="flex gap-2">
                                         <Button
                                             size="sm"
                                             onClick={handleVerifyEnrollment}
+                                            disabled={verifyingEnrollment}
                                         >
-                                            Verify & Enable
+                                            {verifyingEnrollment ? "Verifying..." : "Verify & Enable"}
                                         </Button>
                                         <Button
                                             size="sm"
@@ -827,8 +896,8 @@ export default function Settings() {
                                 </FieldGroup>
                             )
                             : (
-                                <Button size="sm" onClick={handleEnroll2FA}>
-                                    Enable 2FA
+                                <Button size="sm" onClick={handleEnroll2FA} disabled={enrolling}>
+                                    {enrolling ? "Starting..." : "Enable 2FA"}
                                 </Button>
                             )}
                     </CardContent>
@@ -951,8 +1020,9 @@ export default function Settings() {
                                         <Button
                                             variant="destructive"
                                             onClick={handleDeleteAccount}
+                                            disabled={deletingAccount}
                                         >
-                                            Delete my account
+                                            {deletingAccount ? "Deleting..." : "Delete my account"}
                                         </Button>
                                     </DialogFooter>
                                 </DialogContent>

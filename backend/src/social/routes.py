@@ -2,9 +2,9 @@ from datetime import UTC, datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 
-from admin import is_admin
 from auth.db import AuthenticationDB, UserDB
 from auth.supabase import get_current_user_id, supabase_auth_required
+from admin import is_admin
 from questions.db import get_session
 from sqlmodel import select
 
@@ -24,6 +24,15 @@ PRESENCE_STALE_AFTER = timedelta(minutes=10)
 
 def _error(message: str, status: int):
     return jsonify({"message": message}), status
+
+
+def resolve_profile_user(session, profile_ref: str) -> UserDB | None:
+    user = session.get(UserDB, profile_ref)
+    if user:
+        return user
+    return session.exec(
+        select(UserDB).where(UserDB.username == profile_ref)
+    ).first()
 
 
 def _paper_presence_dict(paper: PaperDB | None):
@@ -258,22 +267,14 @@ def _leaderboard_entries(session, users: list[UserDB]) -> list[dict]:
     return entries[:LEADERBOARD_LIMIT]
 
 
-@social_bp.route("/api/users/<string:profile_user_id>/profile", methods=["GET"])
-@supabase_auth_required()
-def user_profile(profile_user_id):
-    viewer_id = str(get_current_user_id())
+@social_bp.route("/api/users/<string:profile_ref>/profile", methods=["GET"])
+@supabase_auth_required(optional=True)
+def user_profile(profile_ref):
     with get_session() as session:
-        profile_user = session.get(UserDB, profile_user_id)
+        profile_user = resolve_profile_user(session, profile_ref)
         if not profile_user:
             return _error("User not found", 404)
-
-        allowed = (
-            viewer_id == profile_user_id
-            or social_db.are_friends(viewer_id, profile_user_id)
-            or is_admin(viewer_id)
-        )
-        if not allowed:
-            return _error("Forbidden", 403)
+        profile_user_id = profile_user.user_id
 
         stats = compute_many_students(session, [profile_user_id]).get(
             profile_user_id,
@@ -299,6 +300,7 @@ def user_profile(profile_user_id):
                 "created_at": profile_user.created_at.isoformat()
                 if profile_user.created_at
                 else None,
+                "admin": is_admin(profile_user.user_id),
             },
             "stats": stats,
             "presence": _presence_response(presence, paper) if presence else None,

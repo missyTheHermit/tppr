@@ -13,6 +13,11 @@ import {
   FieldLabel,
   FieldSeparator,
 } from "@/components/ui/field";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useState } from "react";
@@ -33,6 +38,9 @@ export function LoginForm(
   const [mfaChallengeId, setMfaChallengeId] = useState("");
   const [mfaCode, setMfaCode] = useState("");
   const [showMfa, setShowMfa] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,9 +48,11 @@ export function LoginForm(
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
+    setSigningIn(true);
     const { error: signInError } = await supabase.auth.signInWithPassword(
       { email, password },
     );
+    setSigningIn(false);
     if (signInError) {
       setError(signInError.message);
       return;
@@ -68,11 +78,13 @@ export function LoginForm(
   }
 
   async function handleMfaVerify() {
+    setVerifying(true);
     const { error } = await supabase.auth.mfa.verify({
       factorId: mfaFactorId,
       challengeId: mfaChallengeId,
       code: mfaCode,
     });
+    setVerifying(false);
     if (error) {
       setError(error.message);
       return;
@@ -82,12 +94,14 @@ export function LoginForm(
   }
 
   async function handleGoogleSignIn() {
+    setGoogleLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: new URL(redirectTo, window.location.origin).toString(),
       },
     });
+    setGoogleLoading(false);
     if (error) {
       setError(error.message);
     }
@@ -111,21 +125,30 @@ export function LoginForm(
                     <FieldLabel htmlFor="mfa-code">
                       Enter your 2FA code
                     </FieldLabel>
-                    <Input
+                    <InputOTP
                       id="mfa-code"
-                      value={mfaCode}
-                      onChange={(e) => setMfaCode(e.target.value)}
-                      placeholder="000000"
                       maxLength={6}
+                      value={mfaCode}
+                      onChange={(value) => setMfaCode(value)}
                       autoFocus
-                    />
+                      onComplete={handleMfaVerify}
+                    >
+                      <InputOTPGroup>
+                        <InputOTPSlot index={0} />
+                        <InputOTPSlot index={1} />
+                        <InputOTPSlot index={2} />
+                        <InputOTPSlot index={3} />
+                        <InputOTPSlot index={4} />
+                        <InputOTPSlot index={5} />
+                      </InputOTPGroup>
+                    </InputOTP>
                   </Field>
                   <Field>
                     {error && (
                       <p className="text-sm text-destructive">{error}</p>
                     )}
-                    <Button type="button" onClick={handleMfaVerify}>
-                      Verify
+                    <Button type="button" onClick={handleMfaVerify} disabled={verifying}>
+                      {verifying ? "Verifying..." : "Verify"}
                     </Button>
                   </Field>
                 </FieldGroup>
@@ -137,8 +160,9 @@ export function LoginForm(
                       variant="outline"
                       type="button"
                       onClick={handleGoogleSignIn}
+                      disabled={googleLoading || signingIn}
                     >
-                      Login with Google
+                      {googleLoading ? "Redirecting..." : "Login with Google"}
                     </Button>
                   </Field>
                   <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
@@ -175,7 +199,9 @@ export function LoginForm(
                     {error && (
                       <p className="text-sm text-destructive">{error}</p>
                     )}
-                    <Button type="submit">Login</Button>
+                    <Button type="submit" disabled={signingIn || googleLoading}>
+                      {signingIn ? "Signing in..." : "Login"}
+                    </Button>
                     <FieldDescription className="text-center">
                       Don&apos;t have an account?{" "}
                       <Link to={signupPath(redirectTo)}>Sign up</Link>

@@ -15,12 +15,15 @@ import { Link } from "react-router-dom";
 export default function ForgotPassword() {
     const [email, setEmail] = useState("");
     const [sent, setSent] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     async function handleSubmit(e: React.SubmitEvent) {
         e.preventDefault();
+        setSubmitting(true);
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
             redirectTo: `${window.location.origin}/reset-password`,
         });
+        setSubmitting(false);
         if (error) {
             toast.error(error.message);
         } else {
@@ -53,7 +56,9 @@ export default function ForgotPassword() {
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
                             />
-                            <Button type="submit">Send Reset Link</Button>
+                            <Button type="submit" disabled={submitting}>
+                                {submitting ? "Sending..." : "Send Reset Link"}
+                            </Button>
                             <Link
                                 to="/login"
                                 className="text-xs text-muted-foreground text-center hover:text-foreground"

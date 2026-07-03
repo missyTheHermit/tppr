@@ -62,7 +62,9 @@ class TestWhoami:
         "email": "test@example.com",
         "totp_enabled": 0,
     })
-    def test_authenticated(self, mock_db, mock_uid, app, client):
+    @patch("admin.has_admin_role", return_value=False)
+    @patch("admin.is_admin", return_value=False)
+    def test_authenticated(self, mock_admin, mock_admin_role, mock_db, mock_uid, app, client):
         with patch("auth.supabase.authenticate_supabase_request", side_effect=_fake_auth("user-123")):
             resp = client.get("/api/whoami")
         assert resp.status_code == 200
@@ -156,15 +158,19 @@ class TestUpdatePassword:
 
 class TestDeleteAccount:
     @patch("auth.management.get_current_user_id", return_value="user-123")
+    @patch("auth.management.db.get_user_by_id", return_value={"avatar_url": None})
     @patch("auth.management.db.delete_user", return_value=True)
-    def test_success(self, mock_del, mock_uid, app, client):
+    @patch("auth.management.delete_supabase_auth_user")
+    def test_success(self, mock_supabase_delete, mock_del, mock_get, mock_uid, app, client):
         with patch("auth.supabase.authenticate_supabase_request", side_effect=_fake_auth("user-123")):
             resp = client.delete("/api/account")
         assert resp.status_code == 200
 
     @patch("auth.management.get_current_user_id", return_value="user-123")
+    @patch("auth.management.db.get_user_by_id", return_value={"avatar_url": None})
     @patch("auth.management.db.delete_user", return_value=False)
-    def test_not_found(self, mock_del, mock_uid, app, client):
+    @patch("auth.management.delete_supabase_auth_user")
+    def test_not_found(self, mock_supabase_delete, mock_del, mock_get, mock_uid, app, client):
         with patch("auth.supabase.authenticate_supabase_request", side_effect=_fake_auth("user-123")):
             resp = client.delete("/api/account")
         assert resp.status_code == 404

@@ -98,18 +98,3 @@ export async function submitPaperVerificationRequest(
     const body = await res.json() as { request: PaperVerificationRequest };
     return body.request;
 }
-
-export async function convertMistralOcrToTpprPaper(
-    mistralOcrDocument: unknown,
-): Promise<Paper> {
-    const res = await apiFetch("/api/papers/import/mistral-ocr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document: mistralOcrDocument }),
-    });
-    if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.message ?? `Conversion failed: ${res.status}`);
-    }
-    return res.json();
-}

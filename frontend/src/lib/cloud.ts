@@ -126,7 +126,12 @@ export class SyncService {
                 body: JSON.stringify(paper),
             });
             if (!createRes.ok) {
-                throw new Error(`Create failed: ${createRes.status}`);
+                let detail = `Create failed: ${createRes.status}`;
+                try {
+                    const body = await createRes.json();
+                    if (body?.message) detail = `Create failed: ${body.message}`;
+                } catch { /* not JSON */ }
+                throw new Error(detail);
             }
             await this.saveServerPaper(createRes, version);
         } else if (!res.ok) {
@@ -184,6 +189,16 @@ export class SyncService {
                 throw e;
             }
         }
+    }
+
+    discardPending(): void {
+        if (this.timeout) {
+            clearTimeout(this.timeout);
+            this.timeout = null;
+        }
+        this.pending = null;
+        this.pendingVersion += 1;
+        this.setStatus("synced");
     }
 
     async publish(paperId: string): Promise<void> {

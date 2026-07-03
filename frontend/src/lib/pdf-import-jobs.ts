@@ -35,6 +35,8 @@ export interface PdfImportJob {
     paperTitle?: string;
     /** Error message if status === "error". */
     error?: string;
+    /** Timestamped status lines for the live import output dialog. */
+    logs?: string[];
 }
 
 const STORAGE_KEY = "tppr:pdf-import-jobs";
@@ -103,6 +105,16 @@ export function clearJob(id: string): void {
     writeJobs(jobs);
 }
 
+function appendJobLog(id: string, message: string): void {
+    const timestamp = new Date().toLocaleTimeString();
+    const line = `[${timestamp}] ${message}`;
+    const current = readJobs().find((job) => job.id === id);
+    updateJob(id, {
+        message,
+        logs: [...(current?.logs ?? []), line].slice(-100),
+    });
+}
+
 export function clearFinishedJobs(): void {
     const jobs = readJobs().filter(
         (job) => job.status === "pending" || job.status === "running",
@@ -139,6 +151,7 @@ export function startPdfImport(
         fileName: file.name,
         status: "pending",
         message: "Queued",
+        logs: [`[${new Date().toLocaleTimeString()}] Queued ${file.name}`],
         createdAt: now,
         updatedAt: now,
     };
@@ -165,18 +178,27 @@ async function runPdfImportPipeline(
     try {
         const ocrDocument = await ocrPdfWithMistral(file, {
             apiKey,
-            onStatus: (message) => updateJob(jobId, { message }),
+            onStatus: (message) => appendJobLog(jobId, message),
         });
-        updateJob(jobId, { message: "Converting OCR with Mistral chat" });
-        const converted = await convertMistralOcrWithMistralChat(
-            ocrDocument,
-            {
-                apiKey,
-                onStatus: (message) => updateJob(jobId, { message }),
-            },
-        );
-        updateJob(jobId, { message: "Saving paper" });
+
+        if (typeof ocrDocument === "object" && ocrDocument !== null) {
+            const pageCount = (ocrDocument as { pages?: unknown[] }).pages?.length ?? 0;
+            appendJobLog(jobId, `[dev] OCR returned ${pageCount} pages`);
+        }
+
+        const converted = await convertMistralOcrWithMistralChat(ocrDocument, {
+            apiKey,
+            onStatus: (message) => appendJobLog(jobId, message),
+            onChunk: (text) => appendJobLog(jobId, text),
+        });
+
+        appendJobLog(jobId, `[dev] Converted paper: "${converted.title}", ${converted.questions?.length ?? 0} questions, ${converted.total_marks} marks`);
+
+        appendJobLog(jobId, "Saving paper");
         const paper: Paper = await importPaperFromData(converted, userId);
+
+        appendJobLog(jobId, `[dev] Paper saved: id=${paper.id}, visibility=${paper.visibility}`);
+        appendJobLog(jobId, `[dev] Questions: ${paper.questions.map(q => `#${q.number}(${q.type},${q.marks}m)`).join(", ")}`);
 
         updateJob(jobId, {
             status: "done",
@@ -184,11 +206,13 @@ async function runPdfImportPipeline(
             paperId: paper.id,
             paperTitle: paper.title,
         });
+        appendJobLog(jobId, `Import complete: ${paper.title}`);
         onCreated?.();
     } catch (error) {
         const message = error instanceof Error
             ? error.message
             : "Failed to import PDF";
         updateJob(jobId, { status: "error", message, error: message });
+        appendJobLog(jobId, `Import failed: ${message}`);
     }
 }

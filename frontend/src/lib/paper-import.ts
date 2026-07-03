@@ -1,6 +1,175 @@
-import type { Paper } from "@/types/tppr-paper";
+import type {
+    ContentBlock,
+    Paper,
+    QuestionAnswer,
+    QuestionPart,
+    QuestionRubric,
+} from "@/types/tppr-paper";
 import { syncService } from "@/lib/cloud";
 import { paperStore } from "@/lib/paper";
+
+const ADMIN_FIELD_RE = /^\s*(?:[-*]\s*)?(?:\**\s*)?(?:name|surname|given\s+names?|class|teacher|examiner|supervisor|candidate(?:\s+(?:id|no\.?|number))?|student(?:\s+(?:id|no\.?|number))?|centre(?:\s+(?:id|no\.?|number))?|seat(?:\s+(?:id|no\.?|number))?|id(?:\s+(?:no\.?|number))?)(?:\s*\**)?\s*[:#._-]*\s*(?:[_\-\s.]*|[A-Za-z0-9][A-Za-z0-9\s._/-]{0,80})$/i;
+const ADMIN_BOX_RE = /^(?:\|?\s*)?(?:[_\- ]{3,}\s*\|\s*){1,}[_\- ]{0,}\|?$/;
+const OCR_RUBBISH_PHRASES = [
+    "do not write in this area",
+    "office use only",
+    "answer booklet",
+    "answers will be recorded",
+    "place your answer",
+];
+
+function isOcrRubbishLine(line: string): boolean {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    const low = trimmed.toLowerCase().replaceAll("**", "");
+    return ADMIN_FIELD_RE.test(trimmed)
+        || ADMIN_BOX_RE.test(trimmed)
+        || OCR_RUBBISH_PHRASES.some((phrase) => low.includes(phrase));
+}
+
+function cleanText(text: string): string {
+    return text
+        .split("\n")
+        .filter((line) => !isOcrRubbishLine(line))
+        .join("\n")
+        .trim();
+}
+
+function cleanBlocks(blocks?: ContentBlock[]): ContentBlock[] | undefined {
+    if (!blocks) return blocks;
+    const cleaned: ContentBlock[] = [];
+    for (const block of blocks) {
+        if (block.kind !== "text") {
+            cleaned.push(block);
+            continue;
+        }
+        const text = cleanText(block.text);
+        if (text) cleaned.push({ ...block, text });
+    }
+    return cleaned.length ? cleaned : undefined;
+}
+
+function cleanAnswer(answer: string | QuestionAnswer | null | undefined) {
+    if (typeof answer === "string") return cleanText(answer) || undefined;
+    if (!answer || typeof answer !== "object") return answer;
+    return {
+        ...answer,
+        content: cleanBlocks(answer.content),
+        alternatives: answer.alternatives?.map((blocks) => cleanBlocks(blocks) ?? []),
+    };
+}
+
+function cleanRubric(rubric?: QuestionRubric): QuestionRubric | undefined {
+    if (!rubric) return rubric;
+    return {
+        ...rubric,
+        criteria: rubric.criteria.map((criterion) => ({
+            ...criterion,
+            description: cleanBlocks(criterion.description) ?? [],
+        })),
+        notes: cleanBlocks(rubric.notes),
+    };
+}
+
+function cleanPart(part: QuestionPart): QuestionPart {
+    return {
+        ...part,
+        stimulus: cleanBlocks(part.stimulus),
+        content: cleanBlocks(part.content),
+        answer: cleanAnswer(part.answer),
+        rubric: cleanRubric(part.rubric),
+        guidelines: cleanBlocks(part.guidelines),
+        parts: part.parts?.map(cleanPart),
+    };
+}
+
+export function cleanImportedPaperContent(paper: Paper): Paper {
+    return {
+        ...paper,
+        questions: paper.questions.map((question) => ({
+            ...question,
+            stimulus: cleanBlocks(question.stimulus),
+            content: cleanBlocks(question.content),
+            options: question.options?.map((option) => ({
+                ...option,
+                content: cleanBlocks(option.content) ?? [],
+            })),
+            parts: question.parts?.map(cleanPart),
+            answer: cleanAnswer(question.answer),
+            rubric: cleanRubric(question.rubric),
+            guidelines: cleanBlocks(question.guidelines),
+        })),
+    };
+}
+
+function dataUrlToBlob(dataUrl: string): { blob: Blob; mimeType: string } | null {
+    const match = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
+    if (!match) return null;
+    const mimeType = match[1];
+    try {
+        const byteString = atob(match[2]);
+        const bytes = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) {
+            bytes[i] = byteString.charCodeAt(i);
+        }
+        return { blob: new Blob([bytes], { type: mimeType }), mimeType };
+    } catch {
+        return null;
+    }
+}
+
+async function storeDataUrlImagesAsAssets(
+    paper: Paper,
+): Promise<Paper> {
+    async function resolveBlocks(blocks?: ContentBlock[]): Promise<ContentBlock[] | undefined> {
+        if (!blocks) return blocks;
+        const resolved: ContentBlock[] = [];
+        for (const block of blocks) {
+            if (block.kind === "image" && block.url.startsWith("data:")) {
+                const converted = dataUrlToBlob(block.url);
+                if (converted) {
+                    const assetId = await paperStore.saveAsset(paper.id, converted.blob);
+                    resolved.push({
+                        ...block,
+                        url: `asset://${assetId}`,
+                        mime_type: block.mime_type || converted.mimeType,
+                    });
+                    continue;
+                }
+            }
+            resolved.push(block);
+        }
+        return resolved;
+    }
+
+    async function resolvePart(part: QuestionPart): Promise<QuestionPart> {
+        return {
+            ...part,
+            stimulus: await resolveBlocks(part.stimulus),
+            content: await resolveBlocks(part.content),
+            parts: part.parts ? await Promise.all(part.parts.map(resolvePart)) : undefined,
+        };
+    }
+
+    const questions = await Promise.all(
+        paper.questions.map(async (question) => ({
+            ...question,
+            stimulus: await resolveBlocks(question.stimulus),
+            content: await resolveBlocks(question.content),
+            options: question.options
+                ? await Promise.all(
+                    question.options.map(async (option) => ({
+                        ...option,
+                        content: (await resolveBlocks(option.content)) ?? [],
+                    })),
+                )
+                : undefined,
+            parts: question.parts ? await Promise.all(question.parts.map(resolvePart)) : undefined,
+        })),
+    );
+
+    return { ...paper, questions };
+}
 
 function isValidTpprPaper(data: unknown): data is Paper {
     if (typeof data !== "object" || data === null) return false;
@@ -58,20 +227,22 @@ export async function importPaperFromData(
     }
 
     const now = new Date().toISOString();
-    const imported: Paper = {
-        ...data,
-        id: crypto.randomUUID(),
-        author_id: authorId,
-        visibility: "private",
-        created_at: now,
-        updated_at: now,
-        questions: data.questions.map((question, index) => ({
-            ...question,
-            number: index + 1,
+    const imported: Paper = await storeDataUrlImagesAsAssets(
+        cleanImportedPaperContent({
+            ...data,
+            id: crypto.randomUUID(),
             author_id: authorId,
-            paper_id: "",
-        })),
-    };
+            visibility: "private",
+            created_at: now,
+            updated_at: now,
+            questions: data.questions.map((question, index) => ({
+                ...question,
+                number: index + 1,
+                author_id: authorId,
+                paper_id: "",
+            })),
+        }),
+    );
     imported.questions = imported.questions.map((question) => ({
         ...question,
         paper_id: imported.id,

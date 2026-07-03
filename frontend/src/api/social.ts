@@ -47,6 +47,7 @@ export interface LeaderboardEntry extends PublicUser {
 export interface UserProfile {
     user: PublicUser & {
         created_at?: string | null;
+        admin?: boolean;
     };
     stats: {
         attempts_count: number;

@@ -574,12 +574,14 @@ export default function Dashboard() {
                 {/* Hero header */}
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-4">
-                        <Avatar className="size-14 ring-2 ring-primary/20">
-                            <AvatarImage src={user.avatar_url} alt={user.username} />
-                            <AvatarFallback className="text-lg">
-                                {user.username?.slice(0, 2).toUpperCase() ?? "U"}
-                            </AvatarFallback>
-                        </Avatar>
+                        <Link to={`/users/${user.username}`}>
+                            <Avatar className="size-14 ring-2 ring-primary/20 transition hover:ring-primary/40">
+                                <AvatarImage src={user.avatar_url} alt={user.username} />
+                                <AvatarFallback className="text-lg">
+                                    {user.username?.slice(0, 2).toUpperCase() ?? "U"}
+                                </AvatarFallback>
+                            </Avatar>
+                        </Link>
                         <div>
                             <h1 className="text-2xl font-bold tracking-tight">
                                 Welcome back, {user.username}

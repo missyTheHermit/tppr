@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 export default function ResetPassword() {
     const [password, setPassword] = useState("");
     const [confirm, setConfirm] = useState("");
+    const [submitting, setSubmitting] = useState(false);
     const navigate = useNavigate();
 
     async function handleSubmit(e: React.SubmitEvent) {
@@ -23,7 +24,9 @@ export default function ResetPassword() {
             toast.error("Passwords do not match");
             return;
         }
+        setSubmitting(true);
         const { error } = await supabase.auth.updateUser({ password });
+        setSubmitting(false);
         if (error) {
             toast.error(error.message);
         } else {
@@ -60,7 +63,9 @@ export default function ResetPassword() {
                             onChange={(e) => setConfirm(e.target.value)}
                             required
                         />
-                        <Button type="submit">Update Password</Button>
+                        <Button type="submit" disabled={submitting}>
+                        {submitting ? "Updating..." : "Update Password"}
+                    </Button>
                     </form>
                 </CardContent>
             </Card>

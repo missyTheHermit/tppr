@@ -101,6 +101,17 @@ class PaperStore {
             tx.onerror = () => reject(tx.error);
         });
     }
+
+    async clearAll(): Promise<void> {
+        const db = await this.open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(["papers", "assets"], "readwrite");
+            tx.objectStore("papers").clear();
+            tx.objectStore("assets").clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    }
 }
 
 export const paperStore = new PaperStore();

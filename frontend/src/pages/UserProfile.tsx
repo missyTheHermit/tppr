@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { Activity, Clock, FileText, Flame, Trophy } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { Activity, Clock, FileText, Flame, ShieldCheck, Trophy, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/api/auth";
-import { getUserProfile, type UserProfile as UserProfileData } from "@/api/social";
+import {
+    getUserProfile,
+    sendFriendRequest,
+    type UserProfile as UserProfileData,
+} from "@/api/social";
 import NavBar from "@/components/navbar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -50,18 +54,31 @@ function StatCard(
 export default function UserProfile() {
     const { userId } = useParams<{ userId: string }>();
     const { user, loading: authLoading } = useAuth();
-    const navigate = useNavigate();
     const [profile, setProfile] = useState<UserProfileData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [friendAction, setFriendAction] = useState<"idle" | "sending" | "sent">("idle");
 
-    useEffect(() => {
-        if (!authLoading && !user) {
-            navigate(`/login?redirect=/users/${userId}`, { replace: true });
+    const isOwnProfile = user?.user_id === profile?.user.user_id;
+
+    async function handleAddFriend() {
+        if (!profile) return;
+        setFriendAction("sending");
+        try {
+            await sendFriendRequest(profile.user.username);
+            setFriendAction("sent");
+            toast.success(`Friend request sent to ${profile.user.username}`);
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to send friend request",
+            );
+            setFriendAction("idle");
         }
-    }, [authLoading, navigate, user, userId]);
+    }
 
     useEffect(() => {
-        if (!user || !userId) return;
+        if (authLoading || !userId) return;
 
         setLoading(true);
         getUserProfile(userId)
@@ -75,9 +92,9 @@ export default function UserProfile() {
                 setProfile(null);
             })
             .finally(() => setLoading(false));
-    }, [user, userId]);
+    }, [authLoading, userId]);
 
-    if (authLoading || !user) return null;
+    if (authLoading) return null;
 
     return (
         <>
@@ -119,8 +136,14 @@ export default function UserProfile() {
                                                 </AvatarFallback>
                                             </Avatar>
                                             <div className="min-w-0">
-                                                <CardTitle className="truncate text-2xl">
+                                                <CardTitle className="flex items-center gap-2 truncate text-2xl">
                                                     {profile.user.username}
+                                                    {profile.user.admin && (
+                                                        <Badge variant="secondary" className="gap-1">
+                                                            <ShieldCheck className="size-3.5 text-primary" />
+                                                            Admin
+                                                        </Badge>
+                                                    )}
                                                 </CardTitle>
                                                 <CardDescription>
                                                     Joined{" "}
@@ -133,6 +156,33 @@ export default function UserProfile() {
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2">
+                                            {isOwnProfile && (
+                                                <Button
+                                                    asChild
+                                                    variant="outline"
+                                                    size="sm"
+                                                >
+                                                    <Link to="/settings">Edit profile</Link>
+                                                </Button>
+                                            )}
+                                            {!isOwnProfile && user && friendAction !== "sent" && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={handleAddFriend}
+                                                    disabled={friendAction === "sending"}
+                                                >
+                                                    <UserPlus className="size-4" />
+                                                    {friendAction === "sending"
+                                                        ? "Sending..."
+                                                        : "Add friend"}
+                                                </Button>
+                                            )}
+                                            {!isOwnProfile && user && friendAction === "sent" && (
+                                                <Button variant="outline" size="sm" disabled>
+                                                    Request sent
+                                                </Button>
+                                            )}
                                             <Badge
                                                 variant={profile.presence?.online
                                                     ? "secondary"

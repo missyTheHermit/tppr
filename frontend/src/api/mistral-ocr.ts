@@ -19,6 +19,7 @@ interface MistralChatConversionOptions {
     apiKey: string;
     model?: string;
     onStatus?: StatusHandler;
+    onChunk?: (text: string) => void;
 }
 
 interface OcrImageAsset {
@@ -115,28 +116,6 @@ function stripJsonFences(text: string): string {
     const trimmed = text.trim();
     const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
     return fence ? fence[1].trim() : trimmed;
-}
-
-function getChatMessageText(data: unknown): string {
-    const choices = (data as { choices?: unknown })?.choices;
-    if (!Array.isArray(choices) || choices.length === 0) {
-        throw new Error("Mistral chat did not return a conversion.");
-    }
-
-    const content = (choices[0] as { message?: { content?: unknown } })?.message
-        ?.content;
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-        return content
-            .map((part) =>
-                part && typeof part === "object" &&
-                    typeof (part as { text?: unknown }).text === "string"
-                    ? (part as { text: string }).text
-                    : ""
-            )
-            .join("");
-    }
-    throw new Error("Mistral chat returned an unreadable conversion.");
 }
 
 function replaceImagePlaceholders(value: unknown, assets: OcrImageAsset[]): unknown {
@@ -275,6 +254,7 @@ export async function convertMistralOcrWithMistralChat(
         apiKey,
         model = MISTRAL_CHAT_MODEL,
         onStatus,
+        onChunk,
     }: MistralChatConversionOptions,
 ): Promise<Paper> {
     if (!apiKey.trim()) {
@@ -292,6 +272,7 @@ export async function convertMistralOcrWithMistralChat(
             model,
             temperature: 0.1,
             response_format: { type: "json_object" },
+            stream: true,
             messages: [
                 {
                     role: "system",
@@ -313,8 +294,70 @@ export async function convertMistralOcrWithMistralChat(
         throw await readMistralError(chatRes, "Mistral chat conversion failed.");
     }
 
+    if (!chatRes.body) {
+        throw new Error("Mistral chat returned no response body.");
+    }
+
+    onStatus?.("Streaming Mistral conversion");
+    const reader = chatRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let chatText = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(":")) continue;
+            if (!trimmed.startsWith("data: ")) continue;
+
+            const data = trimmed.slice(6);
+            if (data === "[DONE]") continue;
+
+            try {
+                const parsed = JSON.parse(data);
+                const delta = parsed?.choices?.[0]?.delta?.content;
+                if (typeof delta === "string" && delta) {
+                    chatText += delta;
+                    onChunk?.(delta);
+                }
+            } catch {
+                // partial JSON, skip
+            }
+        }
+    }
+
     onStatus?.("Reading Mistral conversion");
-    const chatText = getChatMessageText(await chatRes.json());
-    const converted = JSON.parse(stripJsonFences(chatText)) as Paper;
+    const stripped = stripJsonFences(chatText);
+    let converted: Paper;
+    try {
+        converted = JSON.parse(stripped) as Paper;
+    } catch (parseErr) {
+        // Try to extract the first JSON object from the text as a fallback
+        const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                converted = JSON.parse(jsonMatch[0]) as Paper;
+            } catch {
+                throw new Error(
+                    `Mistral returned invalid JSON: ${
+                        parseErr instanceof Error ? parseErr.message : "parse error"
+                    }`,
+                );
+            }
+        } else {
+            throw new Error(
+                `Mistral returned invalid JSON: ${
+                    parseErr instanceof Error ? parseErr.message : "parse error"
+                }`,
+            );
+        }
+    }
     return replaceImagePlaceholders(converted, imageAssets) as Paper;
 }
