@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-react";
+import { ImageIcon, Plus, X } from "lucide-react";
 import {
     answerContentText,
     answerOptionLabel,
@@ -11,6 +11,7 @@ import {
 } from "./helpers";
 import type {
     ChoiceOption,
+    ContentBlock,
     Question,
 } from "@/types/tppr-paper";
 import { Button } from "../ui/button";
@@ -24,6 +25,9 @@ import {
     SelectValue,
 } from "../ui/select";
 import { Separator } from "../ui/separator";
+import { FileUpload, FileUploadDropzone } from "@/components/ui/file-upload";
+import { paperStore } from "@/lib/paper";
+import { syncService } from "@/lib/cloud";
 
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 6;
@@ -45,6 +49,48 @@ export function MultipleChoiceEditor({ question, onChange }: {
                     ? { ...opt, content: withFirstText(opt.content, text) }
                     : opt
             ),
+        );
+    }
+
+    async function addOptionImage(label: string, file: File) {
+        const assetId = await paperStore.saveAsset(question.paper_id, file);
+        void syncService.uploadAsset(question.paper_id, assetId);
+        setOptions(
+            options.map((opt) =>
+                opt.label === label
+                    ? {
+                        ...opt,
+                        content: [
+                            ...opt.content,
+                            {
+                                kind: "image",
+                                url: `asset://${assetId}`,
+                                mime_type: file.type,
+                            },
+                        ],
+                    }
+                    : opt
+            ),
+        );
+    }
+
+    function removeOptionImage(label: string, imageIndex: number) {
+        setOptions(
+            options.map((opt) => {
+                if (opt.label !== label) return opt;
+                let imageCount = 0;
+                return {
+                    ...opt,
+                    content: opt.content.filter((block) => {
+                        if (block.kind !== "image") return true;
+                        if (imageCount === imageIndex) {
+                            return false;
+                        }
+                        imageCount++;
+                        return true;
+                    }),
+                };
+            }),
         );
     }
 
@@ -87,7 +133,16 @@ export function MultipleChoiceEditor({ question, onChange }: {
                 />
             </Field>
 
-            {options.map((opt) => (
+            {options.map((opt) => {
+                const optionImages = opt.content
+                    .map((b, i) => [b, i] as const)
+                    .filter(
+                        (entry): entry is [
+                            Extract<ContentBlock, { kind: "image" }>,
+                            number,
+                        ] => entry[0].kind === "image",
+                    );
+                return (
                 <Field key={opt.label}>
                     <FieldLabel htmlFor={`q-opt-${opt.label}`}>
                         Option {opt.label}
@@ -98,6 +153,15 @@ export function MultipleChoiceEditor({ question, onChange }: {
                             value={firstText(opt.content)}
                             onChange={(e) =>
                                 updateOption(opt.label, e.target.value)}
+                            onPaste={(e) => {
+                                const file = Array.from(e.clipboardData.files).find(
+                                    (f) => f.type.startsWith("image/"),
+                                );
+                                if (file) {
+                                    e.preventDefault();
+                                    void addOptionImage(opt.label, file);
+                                }
+                            }}
                         />
                         <Button
                             type="button"
@@ -109,8 +173,46 @@ export function MultipleChoiceEditor({ question, onChange }: {
                             <X />
                         </Button>
                     </div>
+                    <FileUpload
+                        accept="image/*"
+                        onAccept={(files) => {
+                            if (files[0]) void addOptionImage(opt.label, files[0]);
+                        }}
+                    >
+                        <FileUploadDropzone className="py-2">
+                            <ImageIcon className="size-4 text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground">
+                                Drop, paste or click to add an image
+                            </p>
+                        </FileUploadDropzone>
+                    </FileUpload>
+                    {optionImages.map(([img, _]) => {
+                        const imageIndex = opt.content
+                            .filter((b) => b.kind === "image")
+                            .indexOf(img);
+                        return (
+                            <div
+                                key={`img-${imageIndex}`}
+                                className="flex items-center justify-between rounded-md border p-2 text-xs"
+                            >
+                                <span className="truncate text-muted-foreground">
+                                    {img.url}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                        removeOptionImage(opt.label, imageIndex)}
+                                >
+                                    Remove
+                                </Button>
+                            </div>
+                        );
+                    })}
                 </Field>
-            ))}
+                );
+            })}
 
             <Button
                 type="button"
