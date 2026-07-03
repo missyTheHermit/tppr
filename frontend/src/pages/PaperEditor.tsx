@@ -134,6 +134,7 @@ export default function PaperEditor() {
     const [targetPaperId, setTargetPaperId] = useState<string>("");
     const [loadingTargets, setLoadingTargets] = useState(false);
     const [addingQuestionRemix, setAddingQuestionRemix] = useState(false);
+    const [remixing, setRemixing] = useState(false);
 
     useEffect(() => {
         function handleKeyDown(e: KeyboardEvent) {
@@ -336,16 +337,19 @@ export default function PaperEditor() {
 
     async function handleRemix() {
         if (!paper) return;
+        setRemixing(true);
         const res = await apiFetch(`/api/papers/${paper.id}/remix`, {
             method: "POST",
         });
         if (!res.ok) {
             toast.error("Failed to remix paper");
+            setRemixing(false);
             return;
         }
         const remixed = await res.json();
         await paperStore.savePaper(remixed);
         toast.success("Remixed!");
+        setRemixing(false);
         navigate(`/papers/${remixed.id}`);
     }
 
@@ -700,6 +704,7 @@ export default function PaperEditor() {
                                                         variant="ghost"
                                                         size="icon"
                                                         className="size-8"
+                                                        disabled={remixing}
                                                     >
                                                         <Shell className="size-4" />
                                                     </Button>

@@ -114,6 +114,7 @@ export default function NavBar() {
     null,
   );
   const [importDevMode, setImportDevMode] = useState(false);
+  const [switchingAdmin, setSwitchingAdmin] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
     if (!user) {
@@ -197,7 +198,9 @@ export default function NavBar() {
   }
 
   async function handleSwitchToAdminMode() {
+    setSwitchingAdmin(true);
     const error = await switchToAdminMode();
+    setSwitchingAdmin(false);
     if (error) {
       toast.error(error);
       return;
@@ -691,9 +694,9 @@ export default function NavBar() {
                       )}
                       {!user.admin && user.admin_available && (
                         <>
-                          <DropdownMenuItem onClick={handleSwitchToAdminMode}>
+                          <DropdownMenuItem onClick={handleSwitchToAdminMode} disabled={switchingAdmin}>
                             <ShieldCheck />
-                            Switch to admin mode
+                            {switchingAdmin ? "Switching..." : "Switch to admin mode"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                         </>

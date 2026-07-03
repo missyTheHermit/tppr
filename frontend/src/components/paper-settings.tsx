@@ -109,6 +109,7 @@ export const PaperSettings = memo(function PaperSettings(
     const [requestNote, setRequestNote] = useState("");
     const [requestLoading, setRequestLoading] = useState(false);
     const [requestSaving, setRequestSaving] = useState(false);
+    const [savingVisibility, setSavingVisibility] = useState(false);
 
     const showCourseLevel = subject === "Mathematics" || subject === "English";
     const canVerify = Boolean(user?.admin);
@@ -158,6 +159,8 @@ export const PaperSettings = memo(function PaperSettings(
         const isUnpublishing = paper.visibility === "public" &&
             visibility === "private";
 
+        setSavingVisibility(true);
+
         const updated: PaperMeta = {
             ...paper,
             title,
@@ -186,6 +189,7 @@ export const PaperSettings = memo(function PaperSettings(
             }
         } catch {
             toast.error("Failed to update visibility. Please try again.");
+            setSavingVisibility(false);
             return;
         }
 
@@ -193,6 +197,7 @@ export const PaperSettings = memo(function PaperSettings(
         setShowPublishWarning(false);
         setShowUnpublishWarning(false);
         setOpen(false);
+        setSavingVisibility(false);
     }
 
     useEffect(() => {
@@ -727,7 +732,7 @@ export const PaperSettings = memo(function PaperSettings(
             {/* publish paper (private->public) */}
             <Dialog
                 open={showPublishWarning}
-                onOpenChange={setShowPublishWarning}
+                onOpenChange={(open) => { if (!savingVisibility) setShowPublishWarning(open); }}
             >
                 <DialogContent>
                     <DialogHeader>
@@ -764,11 +769,12 @@ export const PaperSettings = memo(function PaperSettings(
                         <Button
                             variant="outline"
                             onClick={() => setShowPublishWarning(false)}
+                            disabled={savingVisibility}
                         >
                             Nevermind
                         </Button>
-                        <Button onClick={save}>
-                            Carry on!
+                        <Button onClick={save} disabled={savingVisibility}>
+                            {savingVisibility ? "Publishing..." : "Carry on!"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -777,7 +783,7 @@ export const PaperSettings = memo(function PaperSettings(
             {/* unpublish paper (public->private) */}
             <Dialog
                 open={showUnpublishWarning}
-                onOpenChange={setShowUnpublishWarning}
+                onOpenChange={(open) => { if (!savingVisibility) setShowUnpublishWarning(open); }}
             >
                 <DialogContent>
                     <DialogHeader>
@@ -804,11 +810,12 @@ export const PaperSettings = memo(function PaperSettings(
                         <Button
                             variant="outline"
                             onClick={() => setShowUnpublishWarning(false)}
+                            disabled={savingVisibility}
                         >
                             Nevermind
                         </Button>
-                        <Button onClick={save}>
-                            Yeah go ahead!
+                        <Button onClick={save} disabled={savingVisibility}>
+                            {savingVisibility ? "Unpublishing..." : "Yeah go ahead!"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

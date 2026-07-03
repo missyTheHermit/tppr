@@ -29,6 +29,8 @@ export function SignupForm({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = safeRedirectPath(searchParams.get("redirect"));
@@ -43,7 +45,9 @@ export function SignupForm({
     }
 
     const formData = new FormData(e.currentTarget);
+    setSubmitting(true);
     signup(formData).then((err) => {
+      setSubmitting(false);
       if (err) setError(err);
       else {
         toast.success("Check your email to confirm your account");
@@ -53,12 +57,14 @@ export function SignupForm({
   }
 
   async function handleGoogleSignIn() {
+    setGoogleLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: new URL(redirectTo, window.location.origin).toString(),
       },
     });
+    setGoogleLoading(false);
     if (error) {
       setError(error.message);
     }
@@ -135,7 +141,9 @@ export function SignupForm({
               </Field>
               <FieldGroup>
                 <Field>
-                  <Button type="submit">Create Account</Button>
+                  <Button type="submit" disabled={submitting || googleLoading}>
+                    {submitting ? "Creating account..." : "Create Account"}
+                  </Button>
 
                   <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
                     or
@@ -145,6 +153,7 @@ export function SignupForm({
                     variant="outline"
                     type="button"
                     onClick={handleGoogleSignIn}
+                    disabled={googleLoading || submitting}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                       <path
@@ -152,7 +161,7 @@ export function SignupForm({
                         fill="currentColor"
                       />
                     </svg>
-                    Signup with Google
+                    {googleLoading ? "Redirecting..." : "Signup with Google"}
                   </Button>
 
                   <FieldDescription className="px-6 text-center">
